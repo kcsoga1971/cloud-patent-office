@@ -28,19 +28,19 @@
           <span class="icon">🔍</span> 專利詳細檢索
         </router-link>
         
-        <router-link to="/services/design-around" class="nav-item">
+        <router-link to="/services/design-around-workflow" class="nav-item">
           <span class="icon">🎯</span> 專利迴避設計
         </router-link>
         
-        <router-link to="/services/oa-response" class="nav-item">
-          <span class="icon">⚖️</span> 專利答辯
+        <router-link to="/services/defense-workflow" class="nav-item">
+          🛡️ 專利答辯
         </router-link>
         
         <router-link to="/services/analysis" class="nav-item">
           <span class="icon">📊</span> 專利分析
         </router-link>
         
-        <router-link to="/services/infringement" class="nav-item">
+        <router-link to="/services/infringement-workflow" class="nav-item">
           <span class="icon">🛡️</span> 專利侵權分析
         </router-link>
         

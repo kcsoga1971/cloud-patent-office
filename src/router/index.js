@@ -1,9 +1,18 @@
 import { createRouter, createWebHistory } from 'vue-router'
 import { supabase } from '../supabase'
-import { useUserStore } from '../stores/user'  // 🎯 加上這行
+import { useUserStore } from '../stores/user'
 import MainLayout from '../layouts/MainLayout.vue'
 import AuthLayout from '../layouts/AuthLayout.vue'
-import SubmissionPrep from '../components/submission/SubmissionPrep.vue'//引入送件準備文件
+import SubmissionPrep from '../components/submission/SubmissionPrep.vue'
+
+// 引入 Views
+import DefensePage from '../views/services/DefensePage.vue'
+// ✅ 新增引入 DefenseWorkflow
+import DefenseWorkflow from '../views/services/DefenseWorkflow.vue'
+import DesignAroundWorkflow from '../views/services/DesignAroundWorkflow.vue'
+// DesignAround.vue 我們通常在下面用懶加載引入
+import InfringementWorkflow from '../views/services/InfringementWorkflow.vue'
+import PatentAnalysisWorkflow from '../views/services/PatentAnalysisWorkflow.vue'
 
 const routes = [
   // 認證相關路由
@@ -19,7 +28,7 @@ const routes = [
       {
         path: 'register',
         name: 'Register',
-        component: () => import('../views/auth/Register.vue')      // ❌ 移除 Register（檔案不存在）
+        component: () => import('../views/auth/Register.vue')
       }
     ]
   },
@@ -45,26 +54,59 @@ const routes = [
         component: () => import('../views/projects/ProjectList.vue')
       },
       
-      // ✅ AI 服務中心路由（只保留存在的檔案）
+      // ========== AI 服務中心路由 ==========
+      
+      // 1. 專利檢索
       {
         path: 'services/search',
         name: 'PatentSearch',
         component: () => import('../views/services/PatentSearch.vue')
       },
+
+      // 2. 迴避設計 (Design Around) - ✅ 新增與修改
       {
+        // 列表頁：管理所有迴避設計案件
+        path: 'services/design-around-workflow',
+        name: 'DesignAroundWorkflow',
+        component: DesignAroundWorkflow, // 或 () => import('../views/services/DesignAroundWorkflow.vue')
+        meta: { requiresAuth: true }
+      },
+      {
+        // 詳細頁/操作頁：單一案件分析 (透過 ?job_id=... 控制)
         path: 'services/design-around',
         name: 'DesignAround',
-        component: () => import('../views/services/DesignAround.vue')
+        component: () => import('../views/services/DesignAround.vue'),
+        meta: { requiresAuth: true }
+      },
+
+      // 3. 專利答辯 (新增的部分)
+      {
+        // ✅ 列表頁：顯示所有答辯案件
+        path: 'services/defense-workflow', 
+        name: 'DefenseWorkflow',
+        component: DefenseWorkflow,
+        meta: { requiresAuth: true }
       },
       {
-        path: 'services/oa-response',
-        name: 'OAResponse',
-        component: () => import('../views/services/OAResponse.vue')
+        // ✅ 詳細頁/操作頁：單一案件分析 (透過 ?job_id=... 控制)
+        path: 'services/defense',
+        name: 'PatentDefense',
+        component: DefensePage,
+        meta: { requiresAuth: true }
+      },
+
+      // 4. 其他分析服務
+      {
+        path: 'services/patent-analysis-workflow',
+        name: 'PatentAnalysisWorkflow',
+        component: PatentAnalysisWorkflow,
+        meta: { requiresAuth: true }
       },
       {
-        path: 'services/analysis',
-        name: 'Analysis',
-        component: () => import('../views/services/Analysis.vue')
+        path: 'services/patent-analysis',
+        name: 'PatentAnalysis',
+        component: () => import('../views/services/PatentAnalysis.vue'),
+        meta: { requiresAuth: true }
       },
       {
         path: 'services/patent-analysis',
@@ -72,9 +114,16 @@ const routes = [
         component: () => import('../views/services/PatentAnalysis.vue')
       },
       {
+        path: 'services/infringement-workflow',
+        name: 'InfringementWorkflow',
+        component: InfringementWorkflow,
+        meta: { requiresAuth: true }
+      },
+      {
         path: 'services/infringement',
         name: 'Infringement',
-        component: () => import('../views/services/Infringement.vue')
+        component: () => import('../views/services/Infringement.vue'),
+        meta: { requiresAuth: true }
       },
       {
         path: 'services/valuation',
@@ -91,35 +140,46 @@ const routes = [
         name: 'CaseManagement',
         component: () => import('../views/services/CaseManagement.vue')
       },
+
+      // 5. 專利撰寫流程 (Drafting)
       {
         path: 'services/workflow',
         name: 'PatentDraftingWorkflow',
         component: () => import('../views/services/PatentDraftingWorkflow.vue')
       },
       {
-        path: 'services/drafting',  // 🎯 新增：直接撰寫的路由
+        path: 'services/drafting',
         name: 'PatentDrafting',
         component: () => import('../views/services/Drafting.vue'),
         meta: { requiresAuth: true }
       },
       {
-        path: 'services/drafting/edit/:jobId',  // 🎯 新增：編輯案件的路由
+        path: 'services/drafting/edit/:jobId',
         name: 'DraftingEdit',
         component: () => import('../views/services/Drafting.vue'),
         meta: { requiresAuth: true }
       },
       {
-        path: '/services/revision/:jobId',
+        path: 'services/revision/:jobId',
         name: 'Revision',
         component: () => import('../views/services/RevisionPage.vue'),
         meta: { requiresAuth: true }
       },
       {
-        path: '/services/qc/:jobId',
+        path: 'services/qc/:jobId',
         name: 'QC',
         component: () => import('../views/services/QCPage.vue'),
         meta: { requiresAuth: true }
       },
+      {
+        // 注意：這裡使用 components 路徑可能不符合慣例，建議之後移到 views
+        path: 'services/submission/:id',
+        name: 'SubmissionPrep',
+        component: SubmissionPrep,
+        meta: { requiresAuth: true }
+      },
+
+      // 系統設定
       {
         path: 'credits',
         name: 'Credits',
@@ -129,13 +189,7 @@ const routes = [
         path: 'settings',
         name: 'Settings',
         component: () => import('../views/settings/UserSettings.vue')
-      },
-      {
-        path: '/components/submission/:id',
-        name: 'SubmissionPrep',
-        component: SubmissionPrep,
-        meta: { requiresAuth: true }
-      }            
+      }     
     ]
   }
 ]
@@ -155,7 +209,6 @@ router.beforeEach(async (to, from, next) => {
     if (!session) {
       next('/auth/login')
     } else {
-      // 🎯 在這裡確保 userStore 已初始化
       const userStore = useUserStore()
       if (!userStore.user) {
         await userStore.fetchUser()

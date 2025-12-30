@@ -13,7 +13,8 @@ import {
   ImageRun,
   HeadingLevel,
   TabStopType,
-  TabStopPosition
+  TabStopPosition,
+  UnderlineType // <--- ⚠️ 記得新增這個 Import
 } from 'docx'
 import { saveAs } from 'file-saver'
 import { supabase } from '../supabase'
@@ -1229,10 +1230,448 @@ const uploadToStorage = async (userId, jobId, filename, blob) => {
     }
   }
 
+// ========================================
+  // 🆕 新增：生成答辯相關文件 (申復書 & 修正稿)
+  // ========================================
+  const generateDefenseDocs = async ({
+    fileName,
+    title,       // 文件標題，如 "專利申復理由書" 或 "修正後申請專利範圍"
+    content,     // AI 生成的 Markdown 內容
+    metaInfo = {} // 案號、申請日等資訊 (可選)
+  }) => {
+    isGenerating.value = true
+    error.value = null
+
+    try {
+      console.log(`🚀 開始生成答辯文件: ${title}`)
+
+      const doc = createDefenseDocx(title, content, metaInfo)
+      const blob = await Packer.toBlob(doc)
+      
+      // 檔名加上時間戳記防止重複
+      const finalFileName = `${fileName}_${Date.now()}.docx`
+      saveAs(blob, finalFileName)
+
+      return { success: true, filename: finalFileName }
+
+    } catch (err) {
+      console.error('❌ 文件生成失敗:', err)
+      error.value = err.message
+      throw err
+    } finally {
+      isGenerating.value = false
+    }
+  }
+
+  // ========================================
+  // 🆕 核心邏輯：建立答辯文件結構
+  // ========================================
+  const createDefenseDocx = (title, markdownContent, metaInfo) => {
+    const fontStyle = {
+      ascii: "Times New Roman",
+      hAnsi: "Times New Roman",
+      eastAsia: "PMingLiU" // 新細明體
+    }
+
+    const pageMargins = {
+      top: convertInchesToTwip(1),
+      bottom: convertInchesToTwip(1),
+      left: convertInchesToTwip(1),
+      right: convertInchesToTwip(1)
+    }
+
+    const children = []
+
+    // 1. 文件大標題
+    children.push(
+      new Paragraph({
+        text: title,
+        heading: HeadingLevel.HEADING_1,
+        alignment: AlignmentType.CENTER,
+        spacing: { before: 240, after: 480 },
+        border: { bottom: { style: "single", size: 6, space: 1 } } // 下方加一條線看起來更正式
+      })
+    )
+
+    // 2. 案件基本資料 (如果有傳入)
+    if (Object.keys(metaInfo).length > 0) {
+      for (const [key, value] of Object.entries(metaInfo)) {
+        if (value) {
+          children.push(new Paragraph({
+            children: [
+              new TextRun({ text: `${key}：`, bold: true, font: fontStyle }),
+              new TextRun({ text: String(value), font: fontStyle })
+            ],
+            spacing: { after: 120 }
+          }))
+        }
+      }
+      // 加個分隔線
+      children.push(new Paragraph({
+        text: "",
+        border: { bottom: { style: "dashed", size: 6, space: 1 } },
+        spacing: { after: 240 }
+      }))
+    }
+
+    // 3. 解析 Markdown 內容 (這是重點！)
+    const lines = markdownContent.split('\n')
+    
+    for (let line of lines) {
+      line = line.trim()
+      if (!line) continue // 跳過空行
+
+      // 處理標題 (##, ###)
+      if (line.startsWith('#')) {
+        const level = line.match(/^#+/)[0].length
+        const text = line.replace(/^#+\s*/, '')
+        
+        // 對應 docx 的標題層級
+        const headingLevel = level === 1 ? HeadingLevel.HEADING_1 : 
+                             level === 2 ? HeadingLevel.HEADING_2 : 
+                             HeadingLevel.HEADING_3
+
+        children.push(new Paragraph({
+          text: text,
+          heading: headingLevel,
+          spacing: { before: 240, after: 120 }
+        }))
+        continue
+      }
+
+      // 處理分隔線 (---)
+      if (line === '---' || line === '***') {
+        children.push(new Paragraph({
+          text: "",
+          border: { bottom: { style: "single", size: 6, space: 1 } },
+          spacing: { before: 120, after: 120 }
+        }))
+        continue
+      }
+
+      // 處理內文 (包含粗體轉底線、刪除線)
+      const textRuns = parseMarkdownLine(line, fontStyle)
+      
+      children.push(new Paragraph({
+        children: textRuns,
+        spacing: { line: 360 }, // 1.5 倍行高
+        alignment: AlignmentType.JUSTIFIED
+      }))
+    }
+
+    // 4. 頁碼
+    const footer = new Footer({
+      children: [
+        new Paragraph({
+          alignment: AlignmentType.CENTER,
+          children: [
+            new TextRun({ children: [PageNumber.CURRENT], font: fontStyle }),
+          ]
+        })
+      ]
+    })
+
+    return new Document({
+      sections: [{
+        properties: {
+          page: { margin: pageMargins }
+        },
+        footers: { default: footer },
+        children: children
+      }]
+    })
+  }
+
+  // ========================================
+  // 🆕 輔助函數：解析單行 Markdown (畫線稿核心)
+  // ========================================
+  const parseMarkdownLine = (text, fontStyle) => {
+    // 這個 Regex 會把字串切成：普通文字, **粗體**, ~~刪除線~~
+    // 注意：這裡假設粗體就是新增(紅字底線)，刪除線就是刪除(灰字刪除線)
+    const regex = /(\*\*.*?\*\*|~~.*?~~)/g
+    const parts = text.split(regex)
+    const runs = []
+
+    parts.forEach(part => {
+      if (!part) return
+
+      if (part.startsWith('**') && part.endsWith('**')) {
+        // === 新增文字 (粗體語法) ===
+        // 轉為：藍色(或紅色)、粗體、底線
+        runs.push(new TextRun({
+          text: part.slice(2, -2),
+          bold: true,
+          color: "0000FF", // 藍色 (專利實務常用藍色或紅色標示新增)
+          underline: {
+            type: UnderlineType.SINGLE,
+            color: "0000FF"
+          },
+          font: fontStyle
+        }))
+      } else if (part.startsWith('~~') && part.endsWith('~~')) {
+        // === 刪除文字 (刪除線語法) ===
+        // 轉為：灰色、刪除線
+        runs.push(new TextRun({
+          text: part.slice(2, -2),
+          strike: true,
+          color: "888888",
+          font: fontStyle
+        }))
+      } else {
+        // === 普通文字 ===
+        runs.push(new TextRun({
+          text: part,
+          font: fontStyle
+        }))
+      }
+    })
+
+    return runs
+  }
+
+  // ========================================
+  // 🆕 新增：生成迴避設計分析報告
+  // ========================================
+  const generateDesignAroundReport = async ({
+    fileName,
+    targetNumber,
+    myIdea,
+    resultData
+  }) => {
+    isGenerating.value = true
+    error.value = null
+
+    try {
+      console.log(`🚀 開始生成迴避設計報告: ${fileName}`)
+
+      // 1. 將 JSON 資料轉換為 Markdown 格式的報告內容
+      let content = `# 專利迴避設計分析報告\n\n`
+      
+      // 基本資訊
+      content += `## 壹、案件基本資料\n`
+      content += `**目標專利案號**：${targetNumber}\n`
+      content += `**分析日期**：${new Date().toLocaleDateString('zh-TW')}\n\n`
+      
+      content += `## 貳、己方技術構想\n`
+      content += `${myIdea}\n\n`
+
+      // 侵權風險
+      if (resultData.infringement_risk_assessment) {
+        const risk = resultData.infringement_risk_assessment
+        content += `## 參、侵權風險評估\n`
+        content += `**風險等級**：${risk.risk_level || '未評估'}\n`
+        content += `**評估理由**：\n${risk.reason || '無'}\n\n`
+      }
+
+      // 目標專利拆解
+      if (resultData.target_claim_analysis) {
+        content += `## 肆、目標專利權利範圍解構 (獨立項)\n`
+        content += `> ${resultData.target_claim_analysis.claim_text || '無法取得請求項原文'}\n\n`
+        content += `**構成要件拆解**：\n`
+        const elements = resultData.target_claim_analysis.elements || []
+        elements.forEach((el, idx) => {
+          content += `${idx + 1}. ${el}\n`
+        })
+        content += `\n`
+      }
+
+      // 迴避策略
+      if (resultData.strategies && resultData.strategies.length > 0) {
+        content += `## 伍、AI 建議迴避策略\n`
+        resultData.strategies.forEach((strategy, idx) => {
+          content += `### 策略 ${idx + 1}：${strategy.title}\n`
+          content += `**類型**：${strategy.type}\n`
+          content += `**迴避成功率**：${strategy.success_rate}\n`
+          content += `**技術方案描述**：\n${strategy.description}\n`
+          content += `**優點 (Pros)**：${strategy.pros}\n`
+          content += `**缺點/風險 (Cons)**：${strategy.cons}\n`
+          content += `\n---\n` // 分隔線
+        })
+      }
+
+      // 2. 呼叫現有的通用 DOCX 生成函式
+      // 我們復用 generateDefenseDocs，因為它的格式 (標題+Markdown) 很適合這種報告
+      const doc = createDefenseDocx(
+        '專利迴避設計分析報告', // 文件大標題
+        content,                // 剛剛組裝好的 Markdown
+        {                       // Meta Info
+          '目標案號': targetNumber,
+          '報告類型': 'Design Around Analysis'
+        }
+      )
+
+      // 3. 轉 Blob 並下載
+      const blob = await Packer.toBlob(doc)
+      const finalFileName = `${fileName}_${Date.now()}.docx`
+      saveAs(blob, finalFileName)
+
+      return { success: true, filename: finalFileName }
+
+    } catch (err) {
+      console.error('❌ 報告生成失敗:', err)
+      error.value = err.message
+      throw err
+    } finally {
+      isGenerating.value = false
+    }
+  }
+
+// ========================================
+  // 🆕 新增：生成侵權分析報告 (含均等論/警語)
+  // ========================================
+  const generateInfringementReport = async ({
+    fileName,
+    targetNumber,
+    productName,
+    resultData
+  }) => {
+    isGenerating.value = true
+    error.value = null
+
+    try {
+      console.log(`🚀 生成侵權報告: ${fileName}`)
+
+      let markdownContent = `# 專利侵權分析報告\n\n`
+      
+      // 警語 (紅字)
+      markdownContent += `> ⚠️ **重要聲明**：本報告係由人工智慧系統自動生成，僅供技術分析參考，不具法律效力。如需運用於訴訟或法律攻防，請務必諮詢專業律師。\n\n`
+
+      markdownContent += `## 壹、分析對象\n`
+      markdownContent += `**目標專利**：${targetNumber}\n`
+      markdownContent += `**待鑑定產品**：${productName}\n`
+      markdownContent += `**分析日期**：${new Date().toLocaleDateString('zh-TW')}\n\n`
+      
+      // 結論
+      if (resultData.overall_conclusion) {
+        markdownContent += `## 貳、鑑定結論\n`
+        markdownContent += `**鑑定結果**：${resultData.overall_conclusion.result}\n`
+        markdownContent += `**風險指數**：${resultData.overall_conclusion.risk_score}/100\n`
+        markdownContent += `**綜合分析**：\n${resultData.overall_conclusion.summary}\n\n`
+      }
+
+      // Claim Chart
+      markdownContent += `## 參、全要件比對分析表 (Claim Chart)\n`
+      markdownContent += `獨立項內容：${resultData.target_claim_text || '略'}\n\n`
+      
+      const chart = resultData.claim_chart || []
+      
+      chart.forEach((row, idx) => {
+        markdownContent += `### 要件 ${idx + 1} (${row.element_id || idx+1})\n`
+        markdownContent += `**【專利構成要件】**：\n${row.element_text}\n\n`
+        markdownContent += `**【產品對應特徵】**：\n${row.product_feature}\n\n`
+        markdownContent += `**【文義讀取】**：${row.literal_match}\n`
+        
+        if (row.literal_match === 'No') {
+          const doe = row.doe_analysis || {}
+          markdownContent += `**【均等論分析】**：\n`
+          markdownContent += `- 功能 (Function): ${doe.function_match}\n`
+          markdownContent += `- 方法 (Way): ${doe.way_match}\n`
+          markdownContent += `- 結果 (Result): ${doe.result_match}\n`
+          markdownContent += `- 結論: ${doe.conclusion}\n`
+        }
+        
+        if (row.estoppel_risk && row.estoppel_risk !== 'Low') {
+          markdownContent += `**⚠️ 禁反言風險**：${row.estoppel_risk}\n`
+        }
+        
+        markdownContent += `---\n`
+      })
+
+      const doc = createDefenseDocx(
+        '專利侵權分析報告',
+        markdownContent,
+        { '案號': targetNumber, '產品': productName }
+      )
+
+      const blob = await Packer.toBlob(doc)
+      const finalFileName = `${fileName}_${Date.now()}.docx`
+      saveAs(blob, finalFileName)
+
+      return { success: true, filename: finalFileName }
+
+    } catch (err) {
+      console.error(err)
+      error.value = err.message
+    } finally {
+      isGenerating.value = false
+    }
+  }
+
+  // ========================================
+  // 🆕 新增：生成專利分析報告 (支援多種類型)
+  // ========================================
+  const generateAnalysisReport = async ({
+    fileName,
+    type,
+    resultData
+  }) => {
+    isGenerating.value = true
+    error.value = null
+
+    try {
+      console.log(`🚀 生成分析報告 (${type}): ${fileName}`)
+
+      let markdownContent = `# 專利情報分析報告\n\n`
+      markdownContent += `**報告類型**：${type}\n`
+      markdownContent += `**生成日期**：${new Date().toLocaleDateString('zh-TW')}\n\n`
+
+      // 根據類型插入不同內容
+      if (type === 'tech_map') {
+        markdownContent += `## 技術圖譜分析\n`
+        markdownContent += `本報告包含 AI 自動生成的技術流程圖代碼與分析。\n\n`
+        markdownContent += `### 技術特徵摘要\n`
+        markdownContent += `${resultData.analysis?.summary || '無'}\n\n`
+        
+        if (resultData.mermaid_code) {
+          markdownContent += `### Mermaid 流程圖代碼\n`
+          markdownContent += `\`\`\`mermaid\n${resultData.mermaid_code}\n\`\`\`\n\n`
+          markdownContent += `> 提示：請使用支援 Mermaid 的 Markdown 編輯器或瀏覽器外掛查看圖表。\n`
+        }
+        
+        if (resultData.html_report_url) {
+           markdownContent += `\n**[點此查看完整互動式 HTML 報告](${resultData.html_report_url})**\n`
+        }
+
+      } else {
+        // 單篇分析或地圖分析
+        markdownContent += `## 分析摘要\n`
+        markdownContent += `${resultData.analysis?.summary || '內容生成中...'}\n\n`
+        
+        // 這裡可以根據您 n8n 回傳的結構 (claims_structure, technical_features) 
+        // 進一步展開詳細欄位。目前先做通用版。
+        if (resultData.analysis?.analysis_report_markdown) {
+           markdownContent += `\n---\n${resultData.analysis.analysis_report_markdown}\n`
+        }
+      }
+
+      const doc = createDefenseDocx(
+        '專利分析報告',
+        markdownContent,
+        { '類型': type }
+      )
+
+      const blob = await Packer.toBlob(doc)
+      const finalFileName = `${fileName}_${Date.now()}.docx`
+      saveAs(blob, finalFileName)
+
+      return { success: true, filename: finalFileName }
+
+    } catch (err) {
+      console.error(err)
+      error.value = err.message
+    } finally {
+      isGenerating.value = false
+    }
+  }
+
   return {
     isGenerating,
     error,
     generateAndHandleDocx,
-    generateApplicationForm // 🆕 新增
+    generateApplicationForm, // 🆕 新增
+    generateDefenseDocs, // 🆕 新增
+    generateDesignAroundReport,
+    generateInfringementReport, // <--- ✅ 新增這行
+    generateAnalysisReport
   }
 }
