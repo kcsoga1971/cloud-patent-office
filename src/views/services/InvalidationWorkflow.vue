@@ -1,4 +1,3 @@
-<!-- src/views/services/InfringementWorkflow.vue -->
 <script setup>
 import { ref, computed, onMounted } from 'vue'
 import { useRouter } from 'vue-router'
@@ -25,7 +24,7 @@ const loadJobs = async () => {
       .from('saas_jobs')
       .select('*')
       .eq('user_id', userStore.user.id)
-      .eq('job_type', 'patent_infringement') // 🎯 鎖定侵權分析類型
+      .eq('job_type', 'patent_invalidation') // 🎯 鎖定舉發案件
       .order('updated_at', { ascending: false })
     
     if (error) throw error
@@ -56,26 +55,24 @@ const stats = computed(() => {
 })
 
 const goToDetail = (jobId) => {
-  router.push({ path: '/services/infringement', query: { job_id: jobId } })
+  router.push({ path: '/services/invalidation', query: { job_id: jobId } })
 }
 
 const startNewJob = () => {
-  router.push('/services/infringement')
+  router.push('/services/invalidation')
 }
 
 const getStatusInfo = (job) => {
-  if (job.status === 'completed') return { label: '✅ 分析完成', class: 'status-success' }
-  if (job.status === 'pending') return { label: '⏳ AI 分析中', class: 'status-warning' }
+  if (job.status === 'completed') return { label: '✅ 舉發分析完成', class: 'status-success' }
+  if (job.status === 'pending') return { label: '⏳ 比對中', class: 'status-warning' }
   if (job.status === 'failed') return { label: '❌ 失敗', class: 'status-error' }
   return { label: '📝 處理中', class: 'status-default' }
 }
 
 const getJobTitle = (job) => {
-  const patentNo = job.input_data?.target_patent_number
-  const product = job.input_data?.product_name
-  if (patentNo && product) return `${product} vs ${patentNo}`
-  if (patentNo) return `專利目標：${patentNo}`
-  return '專利侵權分析專案'
+  const target = job.input_data?.target_patent || '未命名'
+  const evidence = job.input_data?.evidence_patent || '未知證據'
+  return `舉發：${target} vs ${evidence}`
 }
 </script>
 
@@ -83,12 +80,12 @@ const getJobTitle = (job) => {
   <div class="workflow-container">
     <div class="header">
       <div class="header-left">
-        <h1>⚖️ 專利侵權分析管理</h1>
-        <p class="subtitle">管理您的侵權比對報告 (Claim Charts)</p>
+        <h1>⚔️ 專利舉發分析 (Invalidation)</h1>
+        <p class="subtitle">自動化生成專利無效/舉發理由書與證據比對表 (Claim Chart)</p>
       </div>
       <div class="header-actions">
         <button @click="loadJobs" class="btn-secondary">🔄 重新整理</button>
-        <button @click="startNewJob" class="btn-new">➕ 新增分析</button>
+        <button @click="startNewJob" class="btn-new">➕ 新增舉發案</button>
       </div>
     </div>
 
@@ -116,8 +113,7 @@ const getJobTitle = (job) => {
       <div v-for="job in filteredJobs" :key="job.id" class="job-card" @click="goToDetail(job.id)">
         <div class="card-header">
           <div class="job-id-badge">
-            <span v-if="job.my_patent_drafting_number">📁 {{ job.my_patent_drafting_number }}</span>
-            <span v-else class="uuid">#{{ job.id.slice(0,8) }}</span>
+            <span class="uuid">#{{ job.id.slice(0,8) }}</span>
           </div>
           <div class="status-badge" :class="getStatusInfo(job).class">
             {{ getStatusInfo(job).label }}
@@ -129,23 +125,23 @@ const getJobTitle = (job) => {
         <div class="job-meta">
           <span>📅 {{ formatDate(job.created_at) }}</span>
           <span v-if="job.result_data?.conclusion">
-            ⚠️ 結論：{{ job.result_data.conclusion.risk_level || '評估中' }}
+            🎯 成功率預估：{{ job.result_data.conclusion.success_rate || '評估中' }}
           </span>
         </div>
 
         <div class="card-footer">
-          <button class="btn-view">查看比對表 →</button>
+          <button class="btn-view">查看理由書 →</button>
         </div>
       </div>
     </div>
 
     <div v-else class="empty-state">
-      <p>📭 尚無侵權分析專案</p>
+      <p>📭 尚無舉發分析案件</p>
       <button @click="startNewJob" class="btn-primary">開始第一個分析</button>
     </div>
 
-    <div class="infringement-page">    
-      <ServiceTips type="infringement" />
+    <div class="invalidation-page">    
+      <ServiceTips type="invalidation" />
       <div v-if="showConfirmModal" class="modal-overlay">
         </div>
     </div>    
@@ -154,7 +150,7 @@ const getJobTitle = (job) => {
 </template>
 
 <style scoped>
-/* 樣式直接復用 DesignAroundWorkflow 或 DraftingWorkflow */
+/* 樣式同前，保持一致性 */
 .workflow-container { padding: 2rem; max-width: 1200px; margin: 0 auto; }
 .header { display: flex; justify-content: space-between; align-items: flex-end; margin-bottom: 2rem; }
 .header h1 { font-size: 24px; font-weight: 700; color: #2c3e50; margin: 0 0 8px 0; }

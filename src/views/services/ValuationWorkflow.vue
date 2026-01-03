@@ -1,4 +1,3 @@
-<!-- src/views/services/InfringementWorkflow.vue -->
 <script setup>
 import { ref, computed, onMounted } from 'vue'
 import { useRouter } from 'vue-router'
@@ -25,7 +24,7 @@ const loadJobs = async () => {
       .from('saas_jobs')
       .select('*')
       .eq('user_id', userStore.user.id)
-      .eq('job_type', 'patent_infringement') // 🎯 鎖定侵權分析類型
+      .eq('job_type', 'patent_valuation') // 🎯 鎖定鑑價類型
       .order('updated_at', { ascending: false })
     
     if (error) throw error
@@ -55,27 +54,39 @@ const stats = computed(() => {
   }
 })
 
+// 跳轉到執行頁 (帶 ID)
 const goToDetail = (jobId) => {
-  router.push({ path: '/services/infringement', query: { job_id: jobId } })
+  router.push({ path: '/services/valuation', query: { job_id: jobId } })
 }
 
+// 開始新案件
 const startNewJob = () => {
-  router.push('/services/infringement')
+  router.push('/services/valuation')
 }
 
 const getStatusInfo = (job) => {
-  if (job.status === 'completed') return { label: '✅ 分析完成', class: 'status-success' }
-  if (job.status === 'pending') return { label: '⏳ AI 分析中', class: 'status-warning' }
+  if (job.status === 'completed') return { label: '✅ 鑑價完成', class: 'status-success' }
+  if (job.status === 'pending') return { label: '⏳ 估算中', class: 'status-warning' }
   if (job.status === 'failed') return { label: '❌ 失敗', class: 'status-error' }
   return { label: '📝 處理中', class: 'status-default' }
 }
 
 const getJobTitle = (job) => {
-  const patentNo = job.input_data?.target_patent_number
-  const product = job.input_data?.product_name
-  if (patentNo && product) return `${product} vs ${patentNo}`
-  if (patentNo) return `專利目標：${patentNo}`
-  return '專利侵權分析專案'
+  const patentNo = job.input_data?.patent_number || '未命名案件'
+  return `鑑價報告：${patentNo}`
+}
+
+// 嘗試從結果中提取估值金額 (顯示在卡片上)
+const getValuationResult = (job) => {
+  if (job.status !== 'completed' || !job.result_data) return null
+  
+  let data = job.result_data
+  // 如果是字串，嘗試解析
+  if (typeof data === 'string') {
+    try { data = JSON.parse(data) } catch (e) { return null }
+  }
+  
+  return data.valuation_result?.estimated_value_avg || null
 }
 </script>
 
@@ -83,12 +94,12 @@ const getJobTitle = (job) => {
   <div class="workflow-container">
     <div class="header">
       <div class="header-left">
-        <h1>⚖️ 專利侵權分析管理</h1>
-        <p class="subtitle">管理您的侵權比對報告 (Claim Charts)</p>
+        <h1>💰 專利鑑價案件管理</h1>
+        <p class="subtitle">管理您的專利價值評估報告與歷史紀錄</p>
       </div>
       <div class="header-actions">
         <button @click="loadJobs" class="btn-secondary">🔄 重新整理</button>
-        <button @click="startNewJob" class="btn-new">➕ 新增分析</button>
+        <button @click="startNewJob" class="btn-new">➕ 新增鑑價</button>
       </div>
     </div>
 
@@ -99,7 +110,7 @@ const getJobTitle = (job) => {
       </div>
       <div class="stat-card orange" :class="{ active: activeFilter === 'processing' }" @click="activeFilter = 'processing'">
         <span class="stat-value">{{ stats.processing }}</span>
-        <span class="stat-label">⏳ 分析中</span>
+        <span class="stat-label">⏳ 估算中</span>
       </div>
       <div class="stat-card green" :class="{ active: activeFilter === 'completed' }" @click="activeFilter = 'completed'">
         <span class="stat-value">{{ stats.completed }}</span>
@@ -116,8 +127,7 @@ const getJobTitle = (job) => {
       <div v-for="job in filteredJobs" :key="job.id" class="job-card" @click="goToDetail(job.id)">
         <div class="card-header">
           <div class="job-id-badge">
-            <span v-if="job.my_patent_drafting_number">📁 {{ job.my_patent_drafting_number }}</span>
-            <span v-else class="uuid">#{{ job.id.slice(0,8) }}</span>
+            <span class="uuid">#{{ job.id.slice(0,8) }}</span>
           </div>
           <div class="status-badge" :class="getStatusInfo(job).class">
             {{ getStatusInfo(job).label }}
@@ -128,33 +138,32 @@ const getJobTitle = (job) => {
         
         <div class="job-meta">
           <span>📅 {{ formatDate(job.created_at) }}</span>
-          <span v-if="job.result_data?.conclusion">
-            ⚠️ 結論：{{ job.result_data.conclusion.risk_level || '評估中' }}
-          </span>
+          <div v-if="getValuationResult(job)" class="valuation-tag">
+            💵 估值：{{ getValuationResult(job) }}
+          </div>
         </div>
 
         <div class="card-footer">
-          <button class="btn-view">查看比對表 →</button>
+          <button class="btn-view">查看詳細報告 →</button>
         </div>
       </div>
     </div>
 
     <div v-else class="empty-state">
-      <p>📭 尚無侵權分析專案</p>
-      <button @click="startNewJob" class="btn-primary">開始第一個分析</button>
+      <p>📭 尚無鑑價紀錄</p>
+      <button @click="startNewJob" class="btn-primary">開始第一個鑑價</button>
     </div>
 
-    <div class="infringement-page">    
-      <ServiceTips type="infringement" />
+    <div class="valuation-page">    
+      <ServiceTips type="valuation" />
       <div v-if="showConfirmModal" class="modal-overlay">
         </div>
-    </div>    
-
+    </div>
   </div>
 </template>
 
 <style scoped>
-/* 樣式直接復用 DesignAroundWorkflow 或 DraftingWorkflow */
+/* 復用樣式 */
 .workflow-container { padding: 2rem; max-width: 1200px; margin: 0 auto; }
 .header { display: flex; justify-content: space-between; align-items: flex-end; margin-bottom: 2rem; }
 .header h1 { font-size: 24px; font-weight: 700; color: #2c3e50; margin: 0 0 8px 0; }
@@ -187,4 +196,7 @@ const getJobTitle = (job) => {
 .loading, .empty-state { text-align: center; padding: 60px 0; color: #666; }
 .spinner { border: 3px solid #f3f3f3; border-top: 3px solid #3498db; border-radius: 50%; width: 30px; height: 30px; animation: spin 1s linear infinite; margin: 0 auto 10px; }
 @keyframes spin { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); } }
+
+/* 鑑價專屬樣式 */
+.valuation-tag { color: #2e7d32; font-weight: bold; background: #e8f5e9; padding: 4px 8px; border-radius: 4px; display: inline-block; margin-top: 4px; }
 </style>

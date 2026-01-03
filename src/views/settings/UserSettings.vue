@@ -75,13 +75,6 @@
           </select>
         </div>
       </div>
-
-      <!-- 危險區域 -->
-      <div class="settings-section danger-zone">
-        <h2>⚠️ 危險區域</h2>
-        <p>以下操作無法復原，請謹慎操作</p>
-        <button class="btn-danger">刪除帳戶</button>
-      </div>
     </div>
   </div>
 </template>

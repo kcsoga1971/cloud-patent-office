@@ -7,7 +7,6 @@
       </div>
       
       <nav class="nav-menu">
-        <!-- 主要功能 -->
         <router-link to="/dashboard" class="nav-item">
           <span class="icon">🏠</span> 案件總覽
         </router-link>
@@ -15,17 +14,14 @@
           <span class="icon">📁</span> 專案管理
         </router-link>
         
-        <!-- AI 服務中心 -->
         <div class="menu-label">AI 服務中心</div>
         
-        <!-- 🎯 改為連結到工作流程頁面 -->
-        <router-link to="/services/workflow" class="nav-item">
-          <span class="nav-icon">📋</span>
-          <span class="nav-text">專利撰寫工作流程</span>
+        <router-link to="/services/drafting-workflow" class="nav-item">
+          <span class="nav-icon">📋</span> 專利撰寫工作流程
         </router-link>
         
-        <router-link to="/services/search" class="nav-item">
-          <span class="icon">🔍</span> 專利詳細檢索
+        <router-link to="/services/patent-search" class="nav-item">
+          <span class="icon">🔍</span> 各國專利檢索
         </router-link>
         
         <router-link to="/services/design-around-workflow" class="nav-item">
@@ -33,30 +29,35 @@
         </router-link>
         
         <router-link to="/services/defense-workflow" class="nav-item">
-          🛡️ 專利答辯
+          <span class="icon">🛡️</span> 專利答辯
         </router-link>
         
-        <router-link to="/services/analysis" class="nav-item">
+        <router-link to="/services/patent-analysis-workflow" class="nav-item">
           <span class="icon">📊</span> 專利分析
         </router-link>
         
         <router-link to="/services/infringement-workflow" class="nav-item">
-          <span class="icon">🛡️</span> 專利侵權分析
+          <span class="icon">⚖️</span> 專利侵權分析
         </router-link>
         
-        <router-link to="/services/valuation" class="nav-item">
+        <router-link to="/services/valuation-workflow" class="nav-item">
           <span class="icon">💎</span> 專利鑑價
         </router-link>
         
-        <router-link to="/services/invalidation" class="nav-item">
+        <router-link to="/services/invalidation-workflow" class="nav-item">
           <span class="icon">⚔️</span> 專利舉發
         </router-link>
         
         <router-link to="/services/case-management" class="nav-item">
-          <span class="icon">📋</span> 專利案件管理
+          <span class="icon">🗂️</span> 專利案件管理
+        </router-link>
+
+        <div class="menu-label">知識與學習</div>
+
+        <router-link to="/knowledge" class="nav-item">
+          <span class="icon">📚</span> 專利知識庫
         </router-link>
         
-        <!-- 系統功能 -->
         <div class="menu-label">系統設定</div>
         
         <router-link to="/credits" class="nav-item">
@@ -104,7 +105,7 @@ const handleLogout = async () => {
 </script>
 
 <style scoped>
-/* 保持原有樣式 */
+/* 保持原有樣式，這裡不需要變更 */
 .app-container {
   display: flex;
   height: 100vh;
@@ -120,7 +121,16 @@ const handleLogout = async () => {
   flex-direction: column;
   padding: 1.5rem;
   border-right: 1px solid #334155;
-  overflow-y: auto; /* 🎯 新增：允許側邊欄滾動 */
+  overflow-y: auto;
+}
+
+/* 隱藏側邊欄的捲軸，但保留滾動功能 (Optional) */
+.sidebar::-webkit-scrollbar {
+  width: 6px;
+}
+.sidebar::-webkit-scrollbar-thumb {
+  background-color: #334155;
+  border-radius: 3px;
 }
 
 .logo {
@@ -147,7 +157,7 @@ const handleLogout = async () => {
   padding-left: 0.75rem;
   text-transform: uppercase;
   letter-spacing: 0.05em;
-  font-weight: 600; /* 🎯 新增：讓標籤更明顯 */
+  font-weight: 600;
 }
 
 .nav-item {
@@ -161,9 +171,11 @@ const handleLogout = async () => {
   font-size: 0.95rem;
 }
 
-.nav-item .icon {
+.nav-item .icon, .nav-item .nav-icon {
   margin-right: 0.75rem;
-  font-size: 1.1rem; /* 🎯 圖示稍微大一點 */
+  font-size: 1.1rem;
+  width: 1.5rem; /* 固定寬度確保對齊 */
+  text-align: center;
 }
 
 .nav-item:hover {

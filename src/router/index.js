@@ -13,6 +13,12 @@ import DesignAroundWorkflow from '../views/services/DesignAroundWorkflow.vue'
 // DesignAround.vue 我們通常在下面用懶加載引入
 import InfringementWorkflow from '../views/services/InfringementWorkflow.vue'
 import PatentAnalysisWorkflow from '../views/services/PatentAnalysisWorkflow.vue'
+import ValuationWorkflow from '../views/services/ValuationWorkflow.vue'
+import InvalidationWorkflow from '../views/services/InvalidationWorkflow.vue'
+import PatentSearch from '../views/services/PatentSearch.vue'
+import KnowledgeBase from '../views/knowledge/KnowledgeBase.vue'
+import KnowledgeDetail from '../views/knowledge/KnowledgeDetail.vue'
+import ExpertReview from '../views/admin/ExpertReview.vue'
 
 const routes = [
   // 認證相關路由
@@ -32,7 +38,18 @@ const routes = [
       }
     ]
   },
-  
+
+  // 管理專家審查頁面路由
+  {
+    path: '/admin/expert-review',
+    name: 'ExpertReview',
+    component: ExpertReview,
+    meta: { 
+      requiresAuth: true,
+      requiresExpert: true // 自定義標記
+    }
+  },  
+
   // 主要應用路由
   {
     path: '/',
@@ -58,9 +75,10 @@ const routes = [
       
       // 1. 專利檢索
       {
-        path: 'services/search',
+        path: 'services/patent-search',
         name: 'PatentSearch',
-        component: () => import('../views/services/PatentSearch.vue')
+        component: PatentSearch,
+        meta: { requiresAuth: true } // 或設為 false 讓未登入者也能用，當作引流工具
       },
 
       // 2. 迴避設計 (Design Around) - ✅ 新增與修改
@@ -109,11 +127,6 @@ const routes = [
         meta: { requiresAuth: true }
       },
       {
-        path: 'services/patent-analysis',
-        name: 'PatentAnalysis',
-        component: () => import('../views/services/PatentAnalysis.vue')
-      },
-      {
         path: 'services/infringement-workflow',
         name: 'InfringementWorkflow',
         component: InfringementWorkflow,
@@ -126,14 +139,30 @@ const routes = [
         meta: { requiresAuth: true }
       },
       {
+        path: 'services/valuation-workflow',
+        name: 'ValuationWorkflow',
+        component: ValuationWorkflow,
+        meta: { requiresAuth: true }
+      },
+      {
         path: 'services/valuation',
         name: 'Valuation',
-        component: () => import('../views/services/Valuation.vue')
+        // 這指向您剛剛完成的 Valuation.vue (執行頁)
+        component: () => import('../views/services/Valuation.vue'),
+        meta: { requiresAuth: true }
+      },
+      {
+        path: 'services/invalidation-workflow',
+        name: 'InvalidationWorkflow',
+        component: InvalidationWorkflow,
+        meta: { requiresAuth: true }
       },
       {
         path: 'services/invalidation',
         name: 'Invalidation',
-        component: () => import('../views/services/Invalidation.vue')
+        // 指向 Action Page
+        component: () => import('../views/services/Invalidation.vue'),
+        meta: { requiresAuth: true }
       },
       {
         path: 'services/case-management',
@@ -143,7 +172,7 @@ const routes = [
 
       // 5. 專利撰寫流程 (Drafting)
       {
-        path: 'services/workflow',
+        path: 'services/drafting-workflow',
         name: 'PatentDraftingWorkflow',
         component: () => import('../views/services/PatentDraftingWorkflow.vue')
       },
@@ -178,6 +207,18 @@ const routes = [
         component: SubmissionPrep,
         meta: { requiresAuth: true }
       },
+      {
+        path: 'knowledge',
+        name: 'KnowledgeBase',
+        component: KnowledgeBase,
+        meta: { requiresAuth: false } // 知識庫可以公開，當作 SEO Landing Page
+      },
+      {
+        path: 'knowledge/:id',
+        name: 'KnowledgeDetail',
+        component: KnowledgeDetail,
+        meta: { requiresAuth: false }
+      },
 
       // 系統設定
       {
@@ -202,6 +243,17 @@ const router = createRouter({
 // 路由守衛
 router.beforeEach(async (to, from, next) => {
   const requiresAuth = to.matched.some(record => record.meta.requiresAuth)
+
+  // 如果頁面需要 Expert 權限
+  if (to.meta.requiresExpert) {
+    // 確保 User profile 已載入
+    if (!userStore.profile) await userStore.fetchUser()
+    
+    if (userStore.profile?.role !== 'expert') {
+      alert('無權訪問此頁面')
+      return next('/')
+    }
+  }
   
   if (requiresAuth) {
     const { data: { session } } = await supabase.auth.getSession()

@@ -4,6 +4,7 @@ import { useRouter } from 'vue-router'
 import { supabase } from '../../supabase'
 import { useUserStore } from '../../stores/user'
 import { formatDate } from '../../utils/formatters'
+import ServiceTips from '../../components/ServiceTips.vue'
 
 const router = useRouter()
 const userStore = useUserStore()
@@ -149,6 +150,13 @@ const getJobTitle = (job) => {
       <p>📭 尚無迴避設計專案</p>
       <button @click="startNewJob" class="btn-primary">開始第一個迴避設計</button>
     </div>
+
+    <div class="design_around-page">    
+      <ServiceTips type="design_around" />
+      <div v-if="showConfirmModal" class="modal-overlay">
+        </div>
+    </div>    
+
   </div>
 </template>
 

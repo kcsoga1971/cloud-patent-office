@@ -88,30 +88,101 @@
       <p>系統正在檢索資料庫、拆解技術特徵並生成視覺化圖表。</p>
     </div>
 
+    <!-- 在 processing-state 後添加 -->
+    <div v-if="jobStatus === 'failed'" class="error-state">
+      <div class="error-icon">❌</div>
+      <h2>分析失敗</h2>
+      <p>{{ errorMessage || '系統處理時發生錯誤，請稍後再試' }}</p>
+      <div class="actions">
+        <button @click="resetJob" class="btn-primary">重新開始</button>
+        <button @click="router.push('/services/patent-analysis-workflow')" class="btn-secondary">
+          返回列表
+        </button>
+      </div>
+    </div>
+
     <div v-if="resultData" class="result-container">
       <div class="result-header">
-        <h3>📊 分析結果</h3>
-        <button class="btn-secondary" @click="handleDownloadReport">📥 下載報告</button>
+       <h3>📊 分析結果</h3>
+        <button 
+          v-if="selectedOption === 'single_analysis'" 
+          class="btn-secondary" 
+          @click="handleDownloadReport"
+        >
+          📥 下載完整報告
+        </button>
       </div>
 
-      <div class="card result-card">
-        <h4>📝 分析摘要</h4>
-        <div class="markdown-body" v-html="renderMarkdown(resultData.analysis?.summary || '無摘要')"></div>
-      </div>
-
-      <div v-if="resultData.mermaid_code" class="card result-card">
-        <h4>🕸️ 技術圖譜 (Flowchart)</h4>
-        <div class="mermaid-box">
-          <p>圖表已生成，請下載完整報告查看，或複製以下代碼：</p>
-          <pre>{{ resultData.mermaid_code }}</pre>
+      <!-- Tech Map 專用顯示 -->
+      <div v-if="selectedOption === 'tech_map'" class="card result-card">
+        <h4>🕸️ 技術圖譜已生成</h4>
+        <div class="stats-grid">
+          <div class="stat-item">
+            <span class="stat-value">{{ resultData.feature_count }}</span>
+            <span class="stat-label">技術特徵</span>
+          </div>
+          <div class="stat-item">
+            <span class="stat-value">{{ resultData.flow_count }}</span>
+            <span class="stat-label">流程關係</span>
+          </div>
+          <div class="stat-item">
+            <span class="stat-value">{{ resultData.stage_count }}</span>
+            <span class="stat-label">技術階段</span>
+          </div>
         </div>
-        <div v-if="resultData.html_filename" class="link-box">
-           <a :href="resultData.html_report_url" target="_blank" class="btn-link">🔗 開啟互動式圖表 (HTML)</a>
+        <div class="action-buttons">
+          <a 
+            :href="resultData.techmap_url" 
+            target="_blank" 
+            class="btn-primary"
+          >
+            🔗 開啟互動式技術圖譜
+          </a>
+        </div>
+      </div>
+
+      <!-- Full Analysis 專用顯示 -->
+      <div v-if="selectedOption === 'single_analysis'" class="result-grid">
+        <div class="card result-card">
+          <h4>📝 分析摘要</h4>
+          <div class="markdown-body" v-html="renderMarkdown(resultData.analysis_summary || '分析完成')"></div>
+          <div class="quality-score">
+            <span>品質評分：</span>
+            <span class="score">{{ resultData.quality_score }} / 10</span>
+          </div>
+        </div>
+
+        <div class="card result-card">
+          <h4>📊 報告檔案</h4>
+          <div class="file-links">
+            <a :href="resultData.full_analysis_url" target="_blank" class="file-link">
+              📄 完整分析報告 (HTML)
+            </a>
+            <a :href="resultData.techmap_url" target="_blank" class="file-link">
+              🗺️ 技術圖譜 (HTML)
+            </a>
+            <a :href="resultData.text_url" target="_blank" class="file-link">
+              📝 純文字報告 (TXT)
+            </a>
+          </div>
+        </div>
+      </div>
+
+      <!-- Landscape 專用顯示 -->
+      <div v-if="['landscape_basic', 'landscape_deep'].includes(selectedOption)" class="card result-card">
+        <h4>🗺️ 專利地圖分析</h4>
+        <p>地圖分析報告已生成，請查看以下檔案：</p>
+        <div class="file-links">
+          <a :href="resultData.report_url" target="_blank" class="btn-primary">
+            📊 查看完整報告
+          </a>
         </div>
       </div>
 
       <div class="actions">
-        <button @click="router.push('/services/patent-analysis-workflow')" class="btn-secondary">返回列表</button>
+        <button @click="router.push('/services/patent-analysis-workflow')" class="btn-secondary">
+          返回列表
+        </button>
       </div>
     </div>
 
@@ -204,75 +275,204 @@ const executeJob = async () => {
     const { data: reserve, error: resErr } = await supabase.rpc('reserve_credits', {
       p_user_id: userStore.user.id,
       p_credits: currentOption.value.cost,
-      p_action_type: 'PATENT_ANALYSIS', // 通用類型
+      p_action_type: 'PATENT_ANALYSIS',
       p_description: `${currentOption.value.title}: ${inputData.value.patent_number || inputData.value.keywords}`,
       p_model_name: 'Analysis-AI',
-      p_job_id: null, p_project_id: null
+      p_job_id: null,
+      p_project_id: null
     })
-    if (resErr || !reserve.success) throw new Error('扣款失敗')
+    
+    if (resErr || !reserve.success) {
+      throw new Error(resErr?.message || '扣款失敗')
+    }
+    
     transactionId = reserve.transaction_id
+    console.log('✅ 扣款成功:', transactionId)
 
     // 2. 建立 Job
     const { data: job, error: jobErr } = await supabase.from('saas_jobs').insert({
       user_id: userStore.user.id,
-      job_type: 'patent_analysis',
+      job_type: 'patent_analysis', // 統一類型
       status: 'pending',
       payment_status: 'reserved',
       transaction_id: transactionId,
       credits_deducted: currentOption.value.cost,
       input_data: {
-        analysis_type: selectedOption.value, // 重要：區分子類型
-        ...inputData.value
+        analysis_type: selectedOption.value, // ✅ 區分子類型
+        patent_number: inputData.value.patent_number,
+        keywords: inputData.value.keywords,
+        assignee: inputData.value.assignee,
+        notes: inputData.value.notes
       }
     }).select().single()
+    
     if (jobErr) throw jobErr
+    
     jobId.value = job.id
+    console.log('✅ Job 建立成功:', job.id)
 
     // 3. 上傳檔案 (如果有)
     if (inputFile.value) {
-      const filePath = `analysis/${job.id}/source.pdf`
-      await supabase.storage.from('patent-documents').upload(filePath, inputFile.value)
-      await supabase.from('saas_jobs').update({ input_data: { ...job.input_data, file_path: filePath } }).eq('id', job.id)
+      try {
+        const filePath = `analysis/${job.id}/source.pdf`
+        const { error: uploadError } = await supabase.storage
+          .from('patent-documents')
+          .upload(filePath, inputFile.value)
+        
+        if (uploadError) throw uploadError
+
+        const { data: urlData } = supabase.storage
+          .from('patent-documents')
+          .getPublicUrl(filePath)
+
+        const updatedInputData = {
+          ...job.input_data,
+          file_path: filePath,
+          file_url: urlData.publicUrl,
+          file_name: inputFile.value.name
+        }
+
+        await supabase.from('saas_jobs')
+          .update({ input_data: updatedInputData })
+          .eq('id', job.id)
+
+        console.log('✅ 檔案上傳成功')
+      } catch (uploadErr) {
+        console.error('❌ 檔案上傳失敗:', uploadErr)
+        throw new Error('檔案上傳失敗')
+      }
     }
 
-    // 4. Call Webhook (共用一個 URL，由 n8n 判斷 type)
-    fetch(import.meta.env.VITE_N8N_WEBHOOK_ANALYSIS_URL, {
+    // 4. 調用 n8n Router Webhook
+    const webhookPayload = {
+      job_id: job.id,
+      transaction_id: transactionId,
+      analysis_type: selectedOption.value,
+      patent_number: inputData.value.patent_number,
+      keywords: inputData.value.keywords,
+      assignee: inputData.value.assignee,
+      notes: inputData.value.notes
+    }
+
+    console.log('📡 調用 Webhook:', webhookPayload)
+
+    const response = await fetch(import.meta.env.VITE_N8N_WEBHOOK_ROUTER_URL, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ job_id: job.id, transaction_id: transactionId, analysis_type: selectedOption.value })
+      body: JSON.stringify(webhookPayload)
     })
 
+    if (!response.ok) {
+      throw new Error(`Webhook 調用失敗: ${response.status}`)
+    }
+
+    const webhookResult = await response.json()
+    console.log('✅ Webhook 回應:', webhookResult)
+
+    // 5. 開始輪詢
     isInit.value = false
     isProcessing.value = true
+    isUploading.value = false
     startPolling()
 
   } catch (err) {
-    console.error(err)
+    console.error('❌ 執行失敗:', err)
     alert('啟動失敗: ' + err.message)
     isUploading.value = false
-    if (transactionId) await supabase.rpc('refund_credits', { p_transaction_id: transactionId, p_reason: err.message })
+    
+    // 退款
+    if (transactionId) {
+      await supabase.rpc('refund_credits', { 
+        p_transaction_id: transactionId, 
+        p_reason: err.message 
+      })
+      console.log('✅ 已退款')
+    }
   }
 }
 
 const startPolling = () => {
   if (pollTimer.value) clearInterval(pollTimer.value)
+  
   pollTimer.value = setInterval(async () => {
     if (!jobId.value) return
-    const { data } = await supabase.from('saas_jobs').select('*').eq('id', jobId.value).single()
-    jobStatus.value = data.status
-    if (data.status === 'completed' && data.result_data) {
-      if (data.payment_status === 'reserved') {
-        await supabase.rpc('confirm_deduction', { p_transaction_id: data.transaction_id })
-        await supabase.from('saas_jobs').update({ payment_status: 'completed' }).eq('id', jobId.value)
-        userStore.fetchUser()
+    
+    try {
+      const { data, error } = await supabase
+        .from('saas_jobs')
+        .select('*')
+        .eq('id', jobId.value)
+        .single()
+      
+      if (error) throw error
+      
+      jobStatus.value = data.status
+      console.log('📊 Job 狀態:', data.status)
+
+      // 處理完成
+      if (data.status === 'completed' && data.result_data) {
+        // 確認扣款
+        if (data.payment_status === 'reserved') {
+          await supabase.rpc('confirm_deduction', { 
+            p_transaction_id: data.transaction_id 
+          })
+          await supabase.from('saas_jobs')
+            .update({ payment_status: 'completed' })
+            .eq('id', jobId.value)
+          userStore.fetchUser()
+          console.log('✅ 扣款已確認')
+        }
+
+        // 解析 result_data
+        let parsed = data.result_data
+        if (typeof parsed === 'string') {
+          try { 
+            parsed = JSON.parse(parsed) 
+          } catch (e) {
+            console.error('❌ 解析 result_data 失敗:', e)
+            parsed = {}
+          }
+        }
+
+        // 根據分析類型處理
+        const analysisType = data.input_data?.analysis_type
+        
+        if (analysisType === 'tech_map') {
+          resultData.value = {
+            techmap_url: parsed.techmap_url,
+            feature_count: parsed.feature_count || 0,
+            flow_count: parsed.flow_count || 0,
+            stage_count: parsed.stage_count || 0
+          }
+        } else if (analysisType === 'single_analysis') {
+          resultData.value = {
+            full_analysis_url: parsed.full_analysis_url,
+            techmap_url: parsed.techmap_url,
+            text_url: parsed.text_url,
+            analysis_summary: parsed.analysis_summary,
+            quality_score: parsed.quality_score
+          }
+        } else {
+          resultData.value = parsed
+        }
+
+        isProcessing.value = false
+        clearInterval(pollTimer.value)
+        console.log('✅ 分析完成')
       }
-      let parsed = data.result_data
-      if (typeof parsed === 'string') { try { parsed = JSON.parse(parsed) } catch (e) {} }
-      resultData.value = parsed
-      isProcessing.value = false
-      clearInterval(pollTimer.value)
+
+      // 處理失敗
+      if (data.status === 'failed') {
+        errorMessage.value = data.error_message || '未知錯誤'
+        isProcessing.value = false
+        clearInterval(pollTimer.value)
+        console.error('❌ 分析失敗:', errorMessage.value)
+      }
+
+    } catch (err) {
+      console.error('❌ 輪詢錯誤:', err)
     }
-  }, 3000)
+  }, 3000) // 每 3 秒輪詢一次
 }
 
 const handleDownloadReport = async () => {

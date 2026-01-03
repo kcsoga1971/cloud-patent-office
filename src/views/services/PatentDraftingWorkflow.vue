@@ -5,6 +5,7 @@ import { useRouter } from 'vue-router'
 import { supabase } from '../../supabase'
 import { useUserStore } from '../../stores/user'
 import JobCard from '../../components/workflow/JobCard.vue'
+import ServiceTips from '../../components/ServiceTips.vue'
 
 const router = useRouter()
 const userStore = useUserStore()
@@ -323,6 +324,12 @@ const goToSubmission = (jobId) => {
       <button v-if="activeFilter !== 'all'" @click="activeFilter = 'all'" class="btn-text">
         顯示全部案件
       </button>
+    </div>
+
+    <div class="drafting-page">    
+      <ServiceTips type="drafting" />
+      <div v-if="showConfirmModal" class="modal-overlay">
+        </div>
     </div>
   </div>
 </template>

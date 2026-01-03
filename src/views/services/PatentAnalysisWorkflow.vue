@@ -5,6 +5,7 @@ import { useRouter } from 'vue-router'
 import { supabase } from '../../supabase'
 import { useUserStore } from '../../stores/user'
 import { formatDate } from '../../utils/formatters'
+import ServiceTips from '../../components/ServiceTips.vue'
 
 const router = useRouter()
 const userStore = useUserStore()
@@ -144,6 +145,13 @@ const getJobTitle = (job) => {
       <p>📭 尚無分析紀錄</p>
       <button @click="startNewJob" class="btn-primary">開始第一個分析</button>
     </div>
+
+    <div class="analysis-page">    
+      <ServiceTips type="analysis" />
+      <div v-if="showConfirmModal" class="modal-overlay">
+        </div>
+    </div>        
+
   </div>
 </template>
 

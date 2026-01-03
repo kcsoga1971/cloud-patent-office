@@ -1,20 +1,22 @@
 // src/utils/formatters.js
 
 /**
- * 格式化日期時間
- * @param {string} dateString - ISO 8601 日期字串
- * @returns {string} 格式化後的日期時間
+ * 格式化日期
+ * @param {string|Date} dateString - ISO 日期字串或 Date 物件
+ * @returns {string} - 例如：2023年10月5日
  */
 export const formatDate = (dateString) => {
-  if (!dateString) return '未知'
+  if (!dateString) return ''
   const date = new Date(dateString)
-  return date.toLocaleString('zh-TW', {
+  
+  // 檢查日期是否有效
+  if (isNaN(date.getTime())) return dateString
+
+  return new Intl.DateTimeFormat('zh-TW', {
     year: 'numeric',
-    month: '2-digit',
-    day: '2-digit',
-    hour: '2-digit',
-    minute: '2-digit'
-  })
+    month: 'long',
+    day: 'numeric'
+  }).format(date)
 }
 
 /**
@@ -53,4 +55,18 @@ export const formatFileSize = (bytes) => {
   const i = Math.floor(Math.log(bytes) / Math.log(k))
   
   return Math.round(bytes / Math.pow(k, i) * 100) / 100 + ' ' + sizes[i]
+}
+
+/**
+ * 格式化金額 (USD)
+ * @param {number} amount 
+ * @returns {string} - 例如：$1,000
+ */
+export const formatCurrency = (amount) => {
+  if (typeof amount !== 'number') return '$0'
+  return new Intl.NumberFormat('en-US', {
+    style: 'currency',
+    currency: 'USD',
+    maximumFractionDigits: 0
+  }).format(amount)
 }

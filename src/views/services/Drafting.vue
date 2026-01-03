@@ -13,7 +13,7 @@
       <p class="subtitle">只要回答幾個簡單的問題,AI 將為您生成符合格式的專利申請書初稿。</p>
     </div>
 
-    <div v-if="userStore.isLoading" class="loading-state">
+    <div v-if="userStore.isLoading && !userStore.user" class="loading-state">
       <div class="loader"></div>
       <p>正在確認帳戶資訊...</p>
     </div>
@@ -2145,6 +2145,27 @@ onUnmounted(() => {
 
 // ==================== 載入現有 Job（從工作流程頁面跳轉過來）====================
 const loadExistingJob = async (jobId, targetPhase) => {
+  console.log(`🔍 loadExistingJob 開始: ${jobId}, Phase: ${targetPhase}`)
+
+  // ✅ 新增：等待 userStore 載入完成
+  if (userStore.isLoading) {
+    console.log('⏳ 等待 userStore 載入完成...')
+    await new Promise(resolve => {
+      const unwatch = watch(() => userStore.isLoading, (loading) => {
+        if (!loading) {
+          unwatch()
+          resolve()
+        }
+      }, { immediate: true })
+      
+      // 超時保護
+      setTimeout(() => {
+        unwatch()
+        resolve()
+      }, 3000)
+    })
+  }
+
   try {
     console.log(`🔍 載入 Job: ${jobId}, Phase: ${targetPhase}`)
     

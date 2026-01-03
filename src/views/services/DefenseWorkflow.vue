@@ -5,6 +5,7 @@ import { useRouter } from 'vue-router'
 import { supabase } from '../../supabase'
 import { useUserStore } from '../../stores/user'
 import { formatDate } from '../../utils/formatters' // 假設您有這個工具，若無可刪除或自己寫個簡單的
+import ServiceTips from '../../components/ServiceTips.vue'
 
 const router = useRouter()
 const userStore = useUserStore()
@@ -203,6 +204,13 @@ const getStatusInfo = (job) => {
       <p>📭 尚無案件紀錄</p>
       <button @click="startNewDefense" class="btn-primary">開始第一個答辯分析</button>
     </div>
+
+    <div class="defense-page">    
+      <ServiceTips type="defense" />
+      <div v-if="showConfirmModal" class="modal-overlay">
+        </div>
+    </div>    
+
   </div>
 </template>
 
