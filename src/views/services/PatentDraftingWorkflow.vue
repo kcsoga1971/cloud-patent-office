@@ -1,143 +1,163 @@
 <!-- src/views/services/PatentDraftingWorkflow.vue -->
 <script setup>
-import { ref, computed, onMounted } from 'vue'
-import { useRouter } from 'vue-router'
+import { ref, computed, onMounted, watch } from 'vue'
 import { supabase } from '../../supabase'
-import { useUserStore } from '../../stores/user'
+import { useRouter } from 'vue-router'
 import JobCard from '../../components/workflow/JobCard.vue'
-import ServiceTips from '../../components/ServiceTips.vue'
+import ServiceTips from '../../components/workflow/ServiceTips.vue'  // ✅ 加入這行
 
 const router = useRouter()
-const userStore = useUserStore()
-
-// ========== 資料 ==========
 const allJobs = ref([])
-const isLoading = ref(true)
-const activeFilter = ref('all')  // 'all', 'phase1', 'phase2', 'revised', 'checked'
+const activeFilter = ref('all')
+const showConfirmModal = ref(false)  // ✅ 修正 Vue 警告
+const isLoading = ref(false)  // ✅ 加入這行
 
-// ========== 載入所有案件 ==========
-onMounted(async () => {
-  await loadAllJobs()
-})
-
+// ========== 載入案件 ==========
 const loadAllJobs = async () => {
-  isLoading.value = true
-  
   try {
+    isLoading.value = true  // ✅ 開始載入
+    const { data: { user } } = await supabase.auth.getUser()
+    if (!user) {
+      console.error('❌ 未登入')
+      return
+    }
+
     const { data, error } = await supabase
       .from('saas_jobs')
       .select('*')
-      .eq('user_id', userStore.user.id)
-      .in('phase', ['phase1_completed', 'phase2_completed'])  // 只顯示已完成 Phase 1 或 Phase 2 的
-      .order('updated_at', { ascending: false })
-    
+      .eq('user_id', user.id)
+      .order('created_at', { ascending: false })
+
     if (error) throw error
     
     allJobs.value = data || []
-    console.log('✅ 已載入', allJobs.value.length, '個案件')
+    console.log('✅ 已載入', data.length, '個案件')
     
-  } catch (err) {
-    console.error('❌ 載入案件失敗:', err)
-    alert('載入案件失敗：' + err.message)
+    // 🔍 Debug: 顯示所有案件的 phase 和 status
+    console.log('📊 案件狀態分布:')
+    data.forEach((job, idx) => {
+      console.log(`  ${idx + 1}. phase: ${job.phase}, status: ${job.status}`)
+    })
+    
+  } catch (error) {
+    console.error('❌ 載入案件失敗:', error)
   } finally {
-    isLoading.value = false
+    isLoading.value = false  // ✅ 載入完成
   }
 }
 
-// ========== 過濾案件 ==========
-//const filteredJobs = computed(() => {
-//  if (activeFilter.value === 'all') {
-//    return allJobs.value
-//  }
+// ========== 統計資料 ==========
+const stats = computed(() => {
+  const jobs = allJobs.value
   
-//  return allJobs.value.filter(job => {
-//    switch (activeFilter.value) {
-//      case 'phase1':
-//        return job.phase === 'phase1_completed'
-//      case 'phase2':
-//        return job.phase === 'phase2_completed' && (!job.current_version || job.current_version === 1)
-//      case 'revised':
-//        return job.current_version > 1 && job.status !== 'checked'
-//      case 'checked':
-//        return job.status === 'checked'
-//      default:
-//        return true
-//    }
-//  })
-//})
+  const result = {
+    // 1. 全部案件
+    total: jobs.length,
+    
+    // 2. 待撰寫初稿
+    pending_draft: jobs.filter(j => 
+      j.phase === 'phase1_completed' && 
+      j.status === 'completed'
+    ).length,
+    
+    // 3. 初稿已完成（未檢查）
+    draft_done: jobs.filter(j => 
+      j.phase === 'phase2_completed' && 
+      j.status === 'completed'
+    ).length,
+    
+    // 4. 初稿已檢查
+    draft_checked: jobs.filter(j => 
+      j.phase === 'phase2_completed' && 
+      j.status === 'checked'
+    ).length,
+    
+    // 5. 修訂稿已完成（未檢查）
+    revision_done: jobs.filter(j => 
+      j.phase === 'phase4_revised' &&  // ✅ 改為 phase4_revised
+      j.status === 'completed'         // ✅ 改為 completed
+    ).length,
+    
+    // 6. 修訂稿已檢查
+    revision_checked: jobs.filter(j => 
+      j.phase === 'phase4_revised' &&  // ✅ 改為 phase4_revised
+      j.status === 'checked'
+    ).length,
+    
+    // 7. 已送件
+    filed: jobs.filter(j => 
+      j.phase === 'phase6_filed' && 
+      j.status === 'filed'  // ✅ 改為 filed
+    ).length
+  }
+  
+  // 🔍 Debug: 顯示統計結果（放在 return 之前）
+  console.log('📊 統計結果:', result)
+  
+  return result
+})
 
-// 修改 filteredJobs (加入對應的 filter case)
-// ========== 過濾案件邏輯 (對應七大狀態) ==========
+// ========== 過濾案件邏輯 ==========
 const filteredJobs = computed(() => {
   // 1. 全部案件
   if (activeFilter.value === 'all') {
     return allJobs.value
   }
   
-  return allJobs.value.filter(job => {
+  const filtered = allJobs.value.filter(job => {
     const { phase, status } = job
     
     switch (activeFilter.value) {
-      // 2. 待撰寫 (Phase 1 完成)
+      // 2. 待撰寫初稿
       case 'pending_draft':
-        return phase === 'phase1_completed'
+        return phase === 'phase1_completed' && status === 'completed'
         
-      // 3. 初稿完成 (Phase 2 完成且未檢查)
+      // 3. 初稿完成（未檢查）
       case 'draft_done':
-        return phase === 'phase2_completed' && status !== 'checked'
+        return phase === 'phase2_completed' && status === 'completed'
         
-      // 4. 初稿已檢查 (Phase 2 完成且已檢查)
+      // 4. 初稿已檢查
       case 'draft_checked':
         return phase === 'phase2_completed' && status === 'checked'
         
-      // 5. 修訂稿完成 (Phase 4 完成且未檢查)
+      // 5. 修訂稿完成（未檢查）
       case 'revision_done':
-        return phase === 'phase4_revised' && status !== 'checked'
+        return phase === 'phase4_revised' && status === 'completed'  // ✅ 修正
         
-      // 6. 修訂稿已檢查 (Phase 4 完成且已檢查)
+      // 6. 修訂稿已檢查
       case 'revision_checked':
-        return phase === 'phase4_revised' && status === 'checked'
+        return phase === 'phase4_revised' && status === 'checked'  // ✅ 修正
         
-      // 7. 已送件 (Phase 6)
+      // 7. 已送件
       case 'filed':
-        return phase === 'phase6_filed' || status === 'completed'
+        return phase === 'phase6_filed' && status === 'filed'  // ✅ 修正
         
       default:
         return true
     }
   })
+  
+  // 🔍 Debug: 顯示過濾結果（放在 return 之前）
+  console.log(`🔍 過濾器 "${activeFilter.value}" 結果:`, filtered.length, '個案件')
+  
+  return filtered
 })
 
-// ========== 統計資料 ==========
-//const stats = computed(() => ({
-//  total: allJobs.value.length,
-//  phase1: allJobs.value.filter(j => j.phase === 'phase1_completed').length,
-//  phase2: allJobs.value.filter(j => j.phase === 'phase2_completed' && (!j.current_version || j.current_version === 1)).length,
-//  revised: allJobs.value.filter(j => j.current_version > 1 && j.status !== 'checked').length,
-//  checked: allJobs.value.filter(j => j.status === 'checked').length
-//}))
+// 🔍 Debug: 監聽 stats 變化
+watch(stats, (newStats) => {
+  console.log('📊 stats 更新:', newStats)
+}, { deep: true })
 
-// 修改 統計資料stats 計算屬性-調整為Phase 1, Phase 2, Phase 4, Phase 6 狀態分類
-const stats = computed(() => {
-  const jobs = allJobs.value
-  return {
-    // 1. 全部案件
-    total: jobs.length,
-    // 2. 待撰寫初稿
-    pending_draft: jobs.filter(j => j.phase === 'phase1_completed').length,
-    // 3. 初稿已完成 (Phase 2 且未檢查)
-    draft_done: jobs.filter(j => j.phase === 'phase2_completed' && j.status !== 'checked').length,
-    // 4. 初稿已檢查 (Phase 2 且已檢查)
-    draft_checked: jobs.filter(j => j.phase === 'phase2_completed' && j.status === 'checked').length,
-    // 5. 修訂稿已完成 (Phase 4 且未檢查)
-    revision_done: jobs.filter(j => j.phase === 'phase4_revised' && j.status !== 'checked').length,
-    // 6. 修訂稿已檢查 (Phase 4 且已檢查)
-    revision_checked: jobs.filter(j => j.phase === 'phase4_revised' && j.status === 'checked').length,
-    // 7. 已完稿
-    filed: jobs.filter(j => j.phase === 'phase6_filed').length
-  }
+// 🔍 Debug: 監聽 allJobs 變化
+watch(allJobs, (newJobs) => {
+  console.log('📦 allJobs 更新，共', newJobs.length, '個案件')
+}, { deep: true })
+
+// ========== 初始化 ==========
+onMounted(() => {
+  console.log('🚀 PatentDraftingWorkflow 已掛載')
+  loadAllJobs()
 })
-
 
 // ========== 導航函數 ==========
 const goToPhase2 = (jobId) => {

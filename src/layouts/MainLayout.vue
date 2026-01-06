@@ -8,7 +8,7 @@
       
       <nav class="nav-menu">
         <router-link to="/dashboard" class="nav-item">
-          <span class="icon">🏠</span> 案件總覽
+          <span class="icon">🏠</span> 儀表板首頁
         </router-link>
         <router-link to="/projects" class="nav-item">
           <span class="icon">📁</span> 專案管理
@@ -31,6 +31,10 @@
         <router-link to="/services/defense-workflow" class="nav-item">
           <span class="icon">🛡️</span> 專利答辯
         </router-link>
+
+        <router-link to="/services/portfolio-workflow" class="nav-item">
+          <span class="icon">♟️</span> 專利佈局
+        </router-link>        
         
         <router-link to="/services/patent-analysis-workflow" class="nav-item">
           <span class="icon">📊</span> 專利分析

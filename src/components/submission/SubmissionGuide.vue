@@ -1,4 +1,4 @@
-<!-- src/components/submission/SubmissionGuide.vue -->
+<!-- src/components/submission/SubmissionGuide.vue - 簡化版 -->
 <script setup>
 import StepCard from './StepCard.vue'
 
@@ -35,19 +35,6 @@ defineProps({
         <div class="card-body">
           <ul class="tips-list">
             <li v-for="(tip, idx) in guide.tips" :key="idx">{{ tip }}</li>
-          </ul>
-        </div>
-      </div>
-    </div>
-    
-    <!-- 警告 -->
-    <div v-if="guide.warnings && guide.warnings.length > 0" class="warnings-section">
-      <div class="alert alert-warning">
-        <div class="alert-icon">⚠️</div>
-        <div class="alert-content">
-          <h4>重要提醒</h4>
-          <ul>
-            <li v-for="(warning, idx) in guide.warnings" :key="idx">{{ warning }}</li>
           </ul>
         </div>
       </div>

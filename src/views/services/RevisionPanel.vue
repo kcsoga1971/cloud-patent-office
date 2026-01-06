@@ -2,17 +2,18 @@
 <script setup>
 import { ref, computed, onMounted } from 'vue'
 import { supabase } from '../../supabase'
-import { useUserStore } from '../../stores/user' // ✅ 引入 UserStore 用於餘額檢查
+import { useUserStore } from '../../stores/user'
 
 const props = defineProps({
   jobId: { type: String, required: true },
   currentDraft: { type: String, required: true },
   modelName: { type: String, default: 'claude-sonnet-4.5' },
-  status: { type: String, default: '' }
+  status: { type: String, default: '' },
+  job: {  type: Object, required: false }
 })
 
 const emit = defineEmits(['revision-complete'])
-const userStore = useUserStore() // ✅ 初始化 Store
+const userStore = useUserStore()
 
 // ========== 狀態管理 ==========
 const revisionMode = ref('text')
@@ -31,9 +32,9 @@ const qcReportData = ref(null)
 const versions = ref([])
 const isLoadingVersions = ref(false)
 
-// ✅ 扣點確認彈窗狀態
+// 扣點確認彈窗狀態
 const showConfirmModal = ref(false)
-const REVISION_COST = 100 // 設定修訂費用
+const REVISION_COST = 100
 
 // ========== 輔助函數 ==========
 const getRevisionTypeText = (type) => {
@@ -62,12 +63,10 @@ const formatDate = (dateString) => {
 onMounted(async () => {
   await loadVersionHistory()
   await detectQCReport()
-  // 更新使用者餘額，確保彈窗顯示的是最新的數據
   await userStore.fetchUser()
 })
 
 // ========== 1. 版本歷史與 QC 偵測 ==========
-
 const loadVersionHistory = async () => {
   isLoadingVersions.value = true
   try {
@@ -86,9 +85,7 @@ const loadVersionHistory = async () => {
   }
 }
 
-// 偵測是否有 QC 報告 (控制按鈕顯示)
 const detectQCReport = async () => {
-  // 只有當前狀態是 checked 才去查，節省資源
   if (props.status !== 'checked') return
   
   try {
@@ -112,7 +109,6 @@ const detectQCReport = async () => {
   }
 }
 
-// 當使用者點擊「帶入 QC 建議」按鈕時執行
 const prefillQCSuggestions = () => {
   if (!qcReportData.value) return
   
@@ -122,7 +118,6 @@ const prefillQCSuggestions = () => {
   
   let text = "請協助修訂以下內容：\n\n"
   
-  // 1. QC 建議部分
   text += "【基於 QC 檢查的修訂建議】\n"
   if (issues.length > 0) {
     issues.forEach((issue, idx) => {
@@ -138,7 +133,6 @@ const prefillQCSuggestions = () => {
   text += "\n【使用者的額外指示】\n"
   text += "(請在此輸入您的其他要求...)\n"
   
-  // 智慧合併：如果原本就有字，詢問是否覆蓋
   if (revisionInstructions.value.trim()) {
     if (!confirm('指令框已有內容，是否要覆蓋？\n(點擊「取消」將附加在後方)')) {
       revisionInstructions.value += "\n\n" + text
@@ -160,7 +154,9 @@ const handleFileUpload = async (event) => {
   uploadedFile.value = file
   try {
     const fileName = `revisions/${props.jobId}/${Date.now()}-${file.name}`
-    const { data, error } = await supabase.storage.from('patent-documents').upload(fileName, file)
+    const { data, error } = await supabase.storage
+      .from('patent-documents')
+      .upload(fileName, file)
     if (error) throw error
     uploadedFileUrl.value = data.path
   } catch (err) {
@@ -168,7 +164,7 @@ const handleFileUpload = async (event) => {
   }
 }
 
-// ========== 3. 提交修訂邏輯 (含彈窗與前端扣點) ==========
+// ========== 3. 提交修訂邏輯（完整扣點流程）==========
 
 // 第一步：驗證並開啟確認彈窗
 const requestRevision = () => {
@@ -184,7 +180,7 @@ const requestRevision = () => {
     return
   }
   
-  // 餘額驗證 (第一道防線)
+  // 餘額驗證
   const currentBalance = userStore.profile?.credits_balance || 0
   if (currentBalance < REVISION_COST) {
     alert(`點數不足！本次修訂需要 ${REVISION_COST} 點，您目前只有 ${currentBalance} 點。`)
@@ -195,42 +191,96 @@ const requestRevision = () => {
   showConfirmModal.value = true
 }
 
-// 第二步：使用者確認後執行 (扣點 + 呼叫 AI)
+// 第二步：使用者確認後執行（完整的預扣→呼叫→確認→退款流程）
 const submitRevision = async () => {
-  // 關閉彈窗
   showConfirmModal.value = false
   isRevising.value = true
   let transactionId = null
   
+  console.log('========== 修訂流程開始 ==========')
+  
   try {
+    // ==================== 1. 取得 Session ====================
     const { data: { session } } = await supabase.auth.getSession()
     
-    // A. 預扣款 (Reserve)
+    if (!session) {
+      throw new Error('請先登入')
+    }
+    
+    const userId = session.user.id
+    
+    // ✅ 修正：確保 projectId 不是 undefined
+    let projectId = props.job?.project_id
+    
+    // 如果 props.job 沒有 project_id，從資料庫查詢
+    if (!projectId) {
+      console.log('⚠️ props.job 沒有 project_id，從資料庫查詢...')
+      
+      const { data: jobData, error: jobError } = await supabase
+        .from('saas_jobs')
+        .select('project_id')
+        .eq('id', props.jobId)
+        .single()
+      
+      if (jobError) {
+        console.error('❌ 查詢 job 失敗:', jobError)
+        throw new Error('無法取得專案資訊')
+      }
+      
+      projectId = jobData?.project_id
+    }
+    
+    // 最終檢查
+    if (!projectId) {
+      console.error('❌ 無法取得 project_id')
+      console.error('props.job:', props.job)
+      throw new Error('無法取得專案 ID，請重新整理頁面')
+    }
+    
+    console.log('✅ 使用者 ID:', userId)
+    console.log('✅ Job ID:', props.jobId)
+    console.log('✅ Project ID:', projectId)
+
+    // ==================== 2. 預扣款 (Reserve) ====================
     console.log('💰 執行修訂預扣款...')
+    
     const { data: reserveResult, error: reserveError } = await supabase
       .rpc('reserve_credits', {
-        p_user_id: session.user.id,
+        p_user_id: userId,
         p_credits: REVISION_COST,
         p_action_type: 'PATENT_REVISION',
         p_description: `專利修訂 (v${(versions.value[0]?.version || 1) + 1})`,
         p_model_name: props.modelName,
-        p_job_id: props.jobId
+        p_job_id: props.jobId,
+        p_project_id: projectId
       })
 
-    if (reserveError || !reserveResult.success) {
-      throw new Error(reserveResult?.error || reserveError?.message || '扣款失敗')
+    if (reserveError) {
+      console.error('❌ 預扣款 RPC 錯誤:', reserveError)
+      throw new Error(`預扣款失敗: ${reserveError.message}`)
+    }
+
+    if (!reserveResult || !reserveResult.success) {
+      console.error('❌ 預扣款失敗:', reserveResult)
+      throw new Error(reserveResult?.error || '扣款失敗')
     }
     
     transactionId = reserveResult.transaction_id
-    
-    // B. 呼叫 n8n
+    console.log('✅ 預扣款成功，Transaction ID:', transactionId)
+    console.log('💰 扣款前餘額:', reserveResult.balance_before)  // ✅ 加入日誌
+    console.log('💰 扣款後餘額:', reserveResult.balance_after)   // ✅ 加入日誌
+
+    // ==================== 3. 呼叫 n8n Webhook ====================
     console.log('🔄 呼叫 AI 修訂...')
+    
     const webhookUrl = import.meta.env.VITE_N8N_WEBHOOK_PHASE4_URL
-    if (!webhookUrl) throw new Error('未設定 VITE_N8N_WEBHOOK_PHASE4_URL')
+    if (!webhookUrl) {
+      throw new Error('未設定 VITE_N8N_WEBHOOK_PHASE4_URL')
+    }
 
     // 判斷修訂類型
     let revisionType = 'user_revision'
-    if (revisionMode.value === 'text' && revisionInstructions.value.includes('QC 檢查建議')) {
+    if (revisionMode.value === 'text' && revisionInstructions.value.includes('QC 檢查')) {
       revisionType = 'ai_revision'
     }
 
@@ -239,7 +289,7 @@ const submitRevision = async () => {
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
         job_id: props.jobId,
-        user_id: session.user.id,
+        user_id: userId,
         transaction_id: transactionId,
         instructions: revisionMode.value === 'text' ? revisionInstructions.value : null,
         file_url: revisionMode.value === 'file' ? uploadedFileUrl.value : null,
@@ -250,20 +300,34 @@ const submitRevision = async () => {
     
     if (!response.ok) {
       const errText = await response.text()
-      throw new Error(`修訂請求失敗: ${errText}`)
+      throw new Error(`n8n Webhook 呼叫失敗: ${errText}`)
     }
     
     const data = await response.json()
+    console.log('✅ n8n 回應:', data)
     
-    // C. 確認扣款 (Confirm)
+    // ==================== 4. 確認扣款 (Confirm) ====================
     console.log('✅ AI 成功回應，確認扣款...')
-    await supabase.rpc('confirm_deduction', { p_transaction_id: transactionId })
     
-    // D. 完成更新 UI
+    const { data: confirmResult, error: confirmError } = await supabase
+      .rpc('confirm_deduction', {
+        p_transaction_id: transactionId
+      })
+
+    if (confirmError) {
+      console.error('⚠️ 確認扣款失敗:', confirmError)
+    } else if (!confirmResult.success) {
+      console.error('⚠️ 確認扣款失敗:', confirmResult.error)
+    } else {
+      console.log('✅ 扣款已確認')
+    }
+    
+    // ==================== 5. 完成更新 UI ====================
     revisionResult.value = data
     await loadVersionHistory()
     emit('revision-complete', data)
     
+    // 清空表單
     revisionInstructions.value = ''
     uploadedFile.value = null
     uploadedFileUrl.value = ''
@@ -271,28 +335,48 @@ const submitRevision = async () => {
     // 更新餘額顯示
     await userStore.fetchUser()
     
+    console.log('========== 修訂流程完成 ==========')
+    
   } catch (err) {
-    console.error('❌ 修訂失敗:', err)
+    console.error('========== 修訂流程錯誤 ==========')
+    console.error('❌ 錯誤:', err)
     errorMessage.value = err.message
     
-    // E. 失敗退款 (Refund)
+    // ==================== 6. 失敗退款 (Refund) ====================
     if (transactionId) {
-      await supabase.rpc('refund_credits', {
-        p_transaction_id: transactionId,
-        p_reason: 'System Error: ' + err.message
-      })
-      alert('修訂失敗，點數已自動退回。')
+      console.log('🔄 執行退款...')
+      
+      const { data: refundResult, error: refundError } = await supabase
+        .rpc('refund_credits', {
+          p_transaction_id: transactionId,
+          p_reason: 'System Error: ' + err.message
+        })
+      
+      if (refundError || !refundResult.success) {
+        console.error('❌ 退款失敗:', refundError || refundResult.error)
+        alert('修訂失敗，且退款失敗，請聯繫客服。錯誤：' + err.message)
+      } else {
+        console.log('✅ 退款成功')
+        console.log('💰 退款前餘額:', refundResult.balance_before)  // ✅ 加入日誌
+        console.log('💰 退款後餘額:', refundResult.balance_after)   // ✅ 加入日誌
+        alert('修訂失敗，點數已自動退回。錯誤：' + err.message)
+        await userStore.fetchUser()
+      }
     } else {
       alert('修訂失敗：' + err.message)
     }
+    
+    console.log('========== 修訂流程結束 ==========')
+    
   } finally {
     isRevising.value = false
   }
 }
 
 // ========== 其他功能 ==========
-const viewVersion = (version) => { alert(`版本 ${version.version}\n\n${version.changes_summary || '無摘要'}`) }
-const restoreVersion = (version) => { alert('還原功能開發中...') }
+const viewVersion = (version) => {
+  alert(`版本 ${version.version}\n\n${version.changes_summary || '無摘要'}`)
+}
 
 const canSubmit = computed(() => {
   if (isRevising.value) return false
@@ -306,6 +390,7 @@ const canSubmit = computed(() => {
   <div class="revision-panel">
     <h3>📝 智慧修訂</h3>
     
+    <!-- 模式選擇 -->
     <div class="mode-selector">
       <button 
         @click="revisionMode = 'text'" 
@@ -323,6 +408,7 @@ const canSubmit = computed(() => {
       </button>
     </div>
     
+    <!-- 文字模式 -->
     <div v-if="revisionMode === 'text'" class="text-mode">
       <div class="input-header">
         <label>修改指令</label>
@@ -358,6 +444,7 @@ const canSubmit = computed(() => {
       </div>
     </div>
     
+    <!-- 檔案模式 -->
     <div v-if="revisionMode === 'file'" class="file-mode">
       <label>上傳修改後的 Word 檔案</label>
       <input 
@@ -382,6 +469,7 @@ const canSubmit = computed(() => {
       </div>
     </div>
     
+    <!-- 提交按鈕 -->
     <div class="actions">
       <button 
         @click="requestRevision" 
@@ -393,10 +481,12 @@ const canSubmit = computed(() => {
       </button>
     </div>
     
+    <!-- 錯誤訊息 -->
     <div v-if="errorMessage" class="error-message">
-      {{ errorMessage }}
+      ❌ {{ errorMessage }}
     </div>
     
+    <!-- 修訂結果 -->
     <div v-if="revisionResult" class="revision-result">
       <h4>✅ 修訂完成</h4>
       <div class="result-info">
@@ -406,6 +496,7 @@ const canSubmit = computed(() => {
       </div>
     </div>
     
+    <!-- 版本歷史 -->
     <div class="version-history">
       <h4>📚 版本歷史</h4>
       
@@ -438,7 +529,8 @@ const canSubmit = computed(() => {
       </div>
     </div>
 
-    <div v-if="showConfirmModal" class="modal-overlay">
+    <!-- 確認扣點彈窗 -->
+    <div v-if="showConfirmModal" class="modal-overlay" @click.self="showConfirmModal = false">
       <div class="modal-content">
         <div class="modal-header">
           <h3>💰 確認扣點</h3>

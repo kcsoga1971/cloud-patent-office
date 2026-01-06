@@ -60,7 +60,13 @@ const tipsDatabase = {
     '<strong>組合核駁</strong>：單一篇前案通常難以完全無效掉目標，嘗試尋找 2-3 篇前案來組合「顯而易見性」。',
     '<strong>非專利文獻</strong>：學術論文、技術手冊、甚至早期的產品型錄，都是非常強力的舉發證據。',
     '<strong>優先權日</strong>：務必確認您找到的證據，其公開日期早於目標專利的申請日/優先權日。'
-  ]
+  ],
+  // 8. 迴避設計 (Portfolio)
+  portfolio: [
+  '<strong>核心技術優先</strong>：對於預算有限的新創，優先保護「核心演算法」或「關鍵硬體結構」，外觀設計可延後。',
+  '<strong>美國臨時案 (Provisional)</strong>：這是搶佔「優先權日」最便宜的方式，先卡位，一年內再決定是否轉正式案。',
+  '<strong>市場與製造地</strong>：專利是屬地主義，請務必在「主要市場」與「主要競爭對手製造地」進行佈局。'
+  ],
 }
 
 const currentTips = computed(() => tipsDatabase[props.type])

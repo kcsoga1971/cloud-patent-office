@@ -4,7 +4,7 @@ import { ref, computed, onMounted } from 'vue'
 import { useRouter } from 'vue-router'
 import { supabase } from '../../supabase'
 import { useUserStore } from '../../stores/user'
-import { formatDate } from '../../utils/formatters' // 假設您有這個工具，若無可刪除或自己寫個簡單的
+import { formatDate } from '../../utils/formatters'
 import ServiceTips from '../../components/ServiceTips.vue'
 
 const router = useRouter()
@@ -13,31 +13,26 @@ const userStore = useUserStore()
 // ========== 資料 ==========
 const allJobs = ref([])
 const isLoading = ref(true)
-const activeFilter = ref('all') // 'all', 'processing', 'completed'
+const activeFilter = ref('all')
 
 // ========== 載入所有答辯案件 ==========
 onMounted(async () => {
   await loadDefenseJobs()
 })
 
-// ========== 載入或輸入答辯案件編號 ==========
 const getJobTitle = (job) => {
-  // 如果有使用者備註，優先顯示
   if (job.input_data?.user_notes) {
     return job.input_data.user_notes.length > 20 
       ? job.input_data.user_notes.substring(0, 20) + '...' 
       : job.input_data.user_notes
   }
   
-  // 如果 AI 分析完成了，嘗試從結果中抓取標題 (例如申復書的標題)
   if (job.result_data && typeof job.result_data === 'object') {
-     // 假設 AI 回傳的 JSON 有 analysis_summary，可以擷取前幾個字
      if (job.result_data.analysis_summary) {
        return '答辯分析：' + job.result_data.analysis_summary.substring(0, 15) + '...'
      }
   }
 
-  // 預設標題
   return '專利核駁答辯分析'
 }
 
@@ -49,7 +44,7 @@ const loadDefenseJobs = async () => {
       .from('saas_jobs')
       .select('*')
       .eq('user_id', userStore.user.id)
-      .eq('job_type', 'patent_defense') // 🎯 只抓取答辯案件
+      .eq('job_type', 'patent_defense')
       .order('updated_at', { ascending: false })
     
     if (error) throw error
@@ -58,7 +53,6 @@ const loadDefenseJobs = async () => {
     
   } catch (err) {
     console.error('❌ 載入案件失敗:', err)
-    // 這裡不一定要 alert，避免使用者一進來就被彈窗干擾
     console.warn('載入案件失敗：' + err.message)
   } finally {
     isLoading.value = false
@@ -70,8 +64,6 @@ const filteredJobs = computed(() => {
   if (activeFilter.value === 'all') return allJobs.value
   
   return allJobs.value.filter(job => {
-    // 根據 n8n 回傳的狀態
-    // status: 'pending' (處理中), 'completed' (AI完成), 'exported' (已匯出)
     if (activeFilter.value === 'processing') {
       return job.status === 'pending' || job.status === 'drafting' || job.status === 'reserved'
     }
@@ -94,7 +86,6 @@ const stats = computed(() => {
 
 // ========== 導航 ==========
 const goToDefenseDetail = (jobId) => {
-  // 導向到 DefensePage，並帶入 job_id
   router.push({
     path: '/services/defense',
     query: { job_id: jobId }
@@ -102,7 +93,7 @@ const goToDefenseDetail = (jobId) => {
 }
 
 const startNewDefense = () => {
-  router.push('/services/defense') // 不帶 ID 代表新案件
+  router.push('/services/defense')
 }
 
 // ========== 狀態顯示輔助函式 ==========
@@ -205,20 +196,17 @@ const getStatusInfo = (job) => {
       <button @click="startNewDefense" class="btn-primary">開始第一個答辯分析</button>
     </div>
 
-    <div class="defense-page">    
-      <ServiceTips type="defense" />
-      <div v-if="showConfirmModal" class="modal-overlay">
-        </div>
-    </div>    
-
+    <!-- ✅ 修正：只保留 ServiceTips -->
+    <ServiceTips type="defense" />
   </div>
 </template>
 
 <style scoped>
+/* 保持原有樣式 */
 .workflow-container {
-  padding: 2rem;
-  max-width: 1200px;
+  max-width: 1400px;
   margin: 0 auto;
+  padding: 24px;
 }
 
 .header {

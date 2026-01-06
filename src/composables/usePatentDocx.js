@@ -74,88 +74,182 @@ const fetchImageBuffer = async (url, maxRetries = 3, retryDelay = 2000) => {
   return null;
 }
 
-  // ========================================
-  // 主函數：生成並處理 DOCX
-  // ========================================
-  const generateAndHandleDocx = async ({ 
-    jobId, 
-    userId, 
-    title, 
-    content, 
-    type = 'invention',
-    mode = 'download_and_upload',
-    figures = []
-  }) => {
-    isGenerating.value = true
-    error.value = null
+// ========================================
+// 🆕 從生成的 Document 計算頁數（只計算前三章節）
+// ========================================
+const calculatePageCountsFromDocument = (docSections, content) => {
+  let abstractPages = 0
+  let specificationPages = 0
+  let claimsPages = 0
+  
+  docSections.forEach((section) => {
+    const children = section.children || []
     
-    try {
-      console.log('🚀 開始生成 Word 文件:', title)
-      console.log('📊 前端接收圖式清單數量:', figures.length)
-
-      if (!content) throw new Error('內容為空，無法生成文件')
-
-      // 1. 預先下載所有圖片
-      const imageBuffers = {} // 格式: { "1": Buffer, "2": Buffer }
-      
-      if (figures && figures.length > 0) {
-        console.log('⏳ 正在下載圖片資源...')
-        
-        // 使用 Promise.all 並行下載
-        await Promise.all(figures.map(async (fig) => {
-          if (fig.url) {
-            const buffer = await fetchImageBuffer(fig.url)
-            if (buffer) {
-              // 轉成字串 Key 確保匹配 (例如 "1")
-              imageBuffers[String(fig.fig_number)] = buffer
-            }
-          }
-        }))
-        
-        console.log(`✅ 有效圖片資源: ${Object.keys(imageBuffers).length} 張`)
-      }
-
-      // 2. 建立 Docx 物件 (傳入 figures 陣列以確保順序)
-      const doc = createDocxFromMarkdown(content, title, type, imageBuffers, figures)
-
-      // 3. 轉為 Blob
-      const blob = await Packer.toBlob(doc)
-      
-      // 4. 統一檔名
-      const timestamp = Date.now()
-      const typeLabel = type === 'invention' ? 'invention' : 'utility'
-      const hasImages = Object.keys(imageBuffers).length > 0
-      const suffix = hasImages ? '_with_figures' : ''
-      const filename = `patent_${typeLabel}${suffix}_${timestamp}.docx`
-
-      console.log('📄 產生檔案:', filename)
-
-      // 5. 執行下載
-      if (mode.includes('download')) {
-        saveAs(blob, filename)
-      }
-
-      // 6. 執行上傳
-      let publicUrl = null
-      if (mode.includes('upload') && userId && jobId) {
-        publicUrl = await uploadToStorage(userId, jobId, filename, blob)
-      }
-
-      return { 
-        success: true, 
-        filename, 
-        publicUrl,
-        figuresIncluded: Object.keys(imageBuffers).length
-      }
-
-    } catch (err) {
-      console.error('❌ Word 生成失敗:', err)
-      error.value = err.message
-      throw err
-    } finally {
-      isGenerating.value = false
+    // 計算段落數（排除空段落）
+    const paragraphCount = children.filter(child => {
+      if (child.constructor.name !== 'Paragraph') return false
+      const hasContent = child.children?.some(c => c.text?.trim())
+      return hasContent
+    }).length
+    
+    // 估算頁數（每頁約 25 個段落）
+    const estimatedPages = Math.ceil(paragraphCount / 25)
+    
+    // 判斷是哪個 Section（根據 footer 文字）
+    const footerChildren = section.footers?.default?.children?.[0]?.children || []
+    const footerText = footerChildren
+      .map(child => child.text || '')
+      .join('')
+    
+    if (footerText.includes('摘要')) {
+      abstractPages = Math.max(estimatedPages, 1)
+    } else if (footerText.includes('說明書')) {
+      specificationPages = Math.max(estimatedPages, 5)
+    } else if (footerText.includes('專利範圍') || footerText.includes('申請專利範圍')) {
+      claimsPages = Math.max(estimatedPages, 1)
     }
+    // ❌ 不計算圖式頁數
+  })
+  
+  // 計算請求項數量
+  const claimMatches = content.match(/【請求項\d+】/g) || []
+  const claimCount = claimMatches.length
+  
+  console.log('📊 系統計算頁數:', {
+    摘要: abstractPages,
+    說明書: specificationPages,
+    請求項: claimsPages,
+    請求項數: claimCount
+  })
+  
+  return {
+    abstract_pages: abstractPages,
+    specification_pages: specificationPages,
+    claims_pages: claimsPages,
+    claim_count: claimCount,
+    // ✅ 這些欄位留空，等待使用者填入
+    figures_pages: null,
+    figure_count: null,
+    total_pages: null
   }
+}
+
+// ========================================
+// 主函數：生成並處理 DOCX
+// ========================================
+const generateAndHandleDocx = async ({ 
+  jobId, 
+  userId, 
+  title, 
+  content, 
+  type = 'invention',
+  mode = 'download_and_upload',
+  figures = []
+}) => {
+  isGenerating.value = true
+  error.value = null
+  
+  try {
+    console.log('🚀 開始生成 Word 文件:', title)
+
+    if (!content) throw new Error('內容為空，無法生成文件')
+
+    // 1. 預先下載所有圖片（如果有的話）
+    const imageBuffers = {}
+    
+    if (figures && figures.length > 0) {
+      console.log('⏳ 正在下載圖片資源...')
+      
+      await Promise.all(figures.map(async (fig) => {
+        if (fig.url) {
+          const buffer = await fetchImageBuffer(fig.url)
+          if (buffer) {
+            imageBuffers[String(fig.fig_number)] = buffer
+          }
+        }
+      }))
+      
+      console.log(`✅ 有效圖片資源: ${Object.keys(imageBuffers).length} 張`)
+    }
+
+    // 2. 建立 Docx 物件
+    const doc = createDocxFromMarkdown(content, title, type, imageBuffers, figures)
+
+    // 3. ✅ 從生成的 Document 計算頁數（只計算前三章節）
+    const pageCounts = calculatePageCountsFromDocument(doc.sections, content)
+    
+    console.log('📄 頁數統計（系統計算）:', pageCounts)
+
+    // 4. 轉為 Blob
+    const blob = await Packer.toBlob(doc)
+    
+    // 5. 統一檔名
+    const timestamp = Date.now()
+    const typeLabel = type === 'invention' ? 'invention' : 'utility'
+    const hasImages = Object.keys(imageBuffers).length > 0
+    const suffix = hasImages ? '_with_figures' : ''
+    const filename = `patent_${typeLabel}${suffix}_${timestamp}.docx`
+
+    console.log('📄 產生檔案:', filename)
+
+    // 6. 執行下載
+    if (mode.includes('download')) {
+      saveAs(blob, filename)
+    }
+
+    // 7. 執行上傳並更新頁數資訊
+    let publicUrl = null
+    if (mode.includes('upload') && userId && jobId) {
+      publicUrl = await uploadToStorage(userId, jobId, filename, blob)
+      
+      // ✅ 更新頁數資訊到資料庫（只更新系統計算的部分）
+      await updatePageCounts(jobId, pageCounts, publicUrl)
+    }
+
+    return { 
+      success: true, 
+      filename, 
+      publicUrl,
+      figuresIncluded: Object.keys(imageBuffers).length,
+      pageCounts
+    }
+
+  } catch (err) {
+    console.error('❌ Word 生成失敗:', err)
+    error.value = err.message
+    throw err
+  } finally {
+    isGenerating.value = false
+  }
+}
+
+// ========================================
+// 🆕 更新頁數資訊到資料庫（只更新系統計算的部分）
+// ========================================
+const updatePageCounts = async (jobId, pageCounts, docxUrl) => {
+  try {
+    const { error } = await supabase
+      .from('saas_jobs')
+      .update({
+        abstract_pages: pageCounts.abstract_pages,
+        specification_pages: pageCounts.specification_pages,
+        claims_pages: pageCounts.claims_pages,
+        claim_count: pageCounts.claim_count,
+        exported_docx_url: docxUrl,
+        exported_at: new Date().toISOString(),
+        updated_at: new Date().toISOString()
+        // ❌ 不更新 figures_pages, figure_count, total_pages
+      })
+      .eq('id', jobId)
+    
+    if (error) throw error
+    
+    console.log('✅ 頁數資訊已更新到資料庫（系統計算部分）')
+  } catch (err) {
+    console.error('❌ 更新頁數失敗:', err)
+    throw err
+  }
+}
 
 // ========================================
 // 上傳至 Supabase Storage (含錯誤處理)

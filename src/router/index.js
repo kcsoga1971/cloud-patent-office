@@ -1,16 +1,14 @@
+// src/router/index.js
 import { createRouter, createWebHistory } from 'vue-router'
 import { supabase } from '../supabase'
 import { useUserStore } from '../stores/user'
 import MainLayout from '../layouts/MainLayout.vue'
 import AuthLayout from '../layouts/AuthLayout.vue'
-import SubmissionPrep from '../components/submission/SubmissionPrep.vue'
 
 // 引入 Views
 import DefensePage from '../views/services/DefensePage.vue'
-// ✅ 新增引入 DefenseWorkflow
 import DefenseWorkflow from '../views/services/DefenseWorkflow.vue'
 import DesignAroundWorkflow from '../views/services/DesignAroundWorkflow.vue'
-// DesignAround.vue 我們通常在下面用懶加載引入
 import InfringementWorkflow from '../views/services/InfringementWorkflow.vue'
 import PatentAnalysisWorkflow from '../views/services/PatentAnalysisWorkflow.vue'
 import ValuationWorkflow from '../views/services/ValuationWorkflow.vue'
@@ -19,6 +17,15 @@ import PatentSearch from '../views/services/PatentSearch.vue'
 import KnowledgeBase from '../views/knowledge/KnowledgeBase.vue'
 import KnowledgeDetail from '../views/knowledge/KnowledgeDetail.vue'
 import ExpertReview from '../views/admin/ExpertReview.vue'
+import SubmissionPrep from '../views/services/SubmissionPrep.vue'
+
+// ========== 🆕 新增：專利申請書相關 Views ==========
+import AmendmentWorkflow from '../views/services/AmendmentWorkflow.vue'
+import CorrectionWorkflow from '../views/services/CorrectionWorkflow.vue'
+import ReexaminationWorkflow from '../views/services/ReexaminationWorkflow.vue'
+import RectificationWorkflow from '../views/services/RectificationWorkflow.vue'
+const PortfolioWorkflow = () => import('../views/services/PortfolioWorkflow.vue')
+const PortfolioPlanning = () => import('../views/services/PortfolioPlanning.vue')
 
 const routes = [
   // 認證相關路由
@@ -46,7 +53,7 @@ const routes = [
     component: ExpertReview,
     meta: { 
       requiresAuth: true,
-      requiresExpert: true // 自定義標記
+      requiresExpert: true
     }
   },  
 
@@ -78,35 +85,31 @@ const routes = [
         path: 'services/patent-search',
         name: 'PatentSearch',
         component: PatentSearch,
-        meta: { requiresAuth: true } // 或設為 false 讓未登入者也能用，當作引流工具
+        meta: { requiresAuth: true }
       },
 
-      // 2. 迴避設計 (Design Around) - ✅ 新增與修改
+      // 2. 迴避設計 (Design Around)
       {
-        // 列表頁：管理所有迴避設計案件
         path: 'services/design-around-workflow',
         name: 'DesignAroundWorkflow',
-        component: DesignAroundWorkflow, // 或 () => import('../views/services/DesignAroundWorkflow.vue')
+        component: DesignAroundWorkflow,
         meta: { requiresAuth: true }
       },
       {
-        // 詳細頁/操作頁：單一案件分析 (透過 ?job_id=... 控制)
         path: 'services/design-around',
         name: 'DesignAround',
         component: () => import('../views/services/DesignAround.vue'),
         meta: { requiresAuth: true }
       },
 
-      // 3. 專利答辯 (新增的部分)
+      // 3. 專利答辯
       {
-        // ✅ 列表頁：顯示所有答辯案件
         path: 'services/defense-workflow', 
         name: 'DefenseWorkflow',
         component: DefenseWorkflow,
         meta: { requiresAuth: true }
       },
       {
-        // ✅ 詳細頁/操作頁：單一案件分析 (透過 ?job_id=... 控制)
         path: 'services/defense',
         name: 'PatentDefense',
         component: DefensePage,
@@ -147,7 +150,6 @@ const routes = [
       {
         path: 'services/valuation',
         name: 'Valuation',
-        // 這指向您剛剛完成的 Valuation.vue (執行頁)
         component: () => import('../views/services/Valuation.vue'),
         meta: { requiresAuth: true }
       },
@@ -160,7 +162,6 @@ const routes = [
       {
         path: 'services/invalidation',
         name: 'Invalidation',
-        // 指向 Action Page
         component: () => import('../views/services/Invalidation.vue'),
         meta: { requiresAuth: true }
       },
@@ -201,17 +202,131 @@ const routes = [
         meta: { requiresAuth: true }
       },
       {
-        // 注意：這裡使用 components 路徑可能不符合慣例，建議之後移到 views
-        path: 'services/submission/:id',
+        path: 'services/submission/:jobId',
         name: 'SubmissionPrep',
-        component: SubmissionPrep,
+        component: () => import('../views/services/SubmissionPrep.vue'),
         meta: { requiresAuth: true }
       },
+      {
+        path: 'services/portfolio-workflow',
+        name: 'PortfolioWorkflow',
+        component: PortfolioWorkflow,
+        meta: { requiresAuth: true }
+      },
+      {
+        path: 'services/portfolio-planning',
+        name: 'PortfolioPlanning',
+        component: PortfolioPlanning,
+        meta: { requiresAuth: true }
+      },
+
+      // ========== 🆕 6. 專利申請書服務 ==========
+      
+      // 6.1 專利修正 (Amendment)
+      {
+        path: 'services/amendment',
+        name: 'AmendmentWorkflow',
+        component: AmendmentWorkflow,
+        meta: { 
+          requiresAuth: true,
+          title: '專利修正案件管理'
+        }
+      },
+      {
+        path: 'services/amendment/prep/:jobId?',
+        name: 'AmendmentPrep',
+        component: () => import('../views/services/AmendmentPrep.vue'),
+        meta: { 
+          requiresAuth: true,
+          title: '專利修正申請書'
+        }
+      },
+
+      // 6.2 專利補正 (Correction)
+      {
+        path: 'services/correction',
+        name: 'CorrectionWorkflow',
+        component: CorrectionWorkflow,
+        meta: { 
+          requiresAuth: true,
+          title: '專利補正案件管理'
+        }
+      },
+      {
+        path: 'services/correction/prep/:jobId?',
+        name: 'CorrectionPrep',
+        component: () => import('../views/services/CorrectionPrep.vue'),
+        meta: { 
+          requiresAuth: true,
+          title: '專利補正文件申請書'
+        }
+      },
+
+      // 6.3 專利再審查 (Reexamination)
+      {
+        path: 'services/reexamination',
+        name: 'ReexaminationWorkflow',
+        component: ReexaminationWorkflow,
+        meta: { 
+          requiresAuth: true,
+          title: '專利再審查案件管理'
+        }
+      },
+      {
+        path: 'services/reexamination/prep/:jobId?',
+        name: 'ReexaminationPrep',
+        component: () => import('../views/services/ReexaminationPrep.vue'),
+        meta: { 
+          requiresAuth: true,
+          title: '專利再審查申請書'
+        }
+      },
+
+      // 6.4 專利更正 (Rectification)
+      {
+        path: 'services/rectification',
+        name: 'RectificationWorkflow',
+        component: RectificationWorkflow,
+        meta: { 
+          requiresAuth: true,
+          title: '專利更正案件管理'
+        }
+      },
+      {
+        path: 'services/rectification/prep/:jobId?',
+        name: 'RectificationPrep',
+        component: () => import('../views/services/RectificationPrep.vue'),
+        meta: { 
+          requiresAuth: true,
+          title: '專利更正申請書'
+        }
+      },
+      // ========== 🆕 7. 專利舉發申請書 ==========
+      {
+        path: 'services/invalidation-application',
+        name: 'InvalidationApplicationWorkflow',
+        component: () => import('../views/services/InvalidationApplicationWorkflow.vue'),
+        meta: { 
+          requiresAuth: true,
+          title: '專利舉發申請書管理'
+        }
+      },
+      {
+        path: 'services/invalidation-application/prep/:jobId?',
+        name: 'InvalidationPrep',
+        component: () => import('../views/services/InvalidationPrep.vue'),
+        meta: { 
+          requiresAuth: true,
+          title: '專利舉發申請書'
+        }
+      },
+
+      // ========== 知識庫 ==========
       {
         path: 'knowledge',
         name: 'KnowledgeBase',
         component: KnowledgeBase,
-        meta: { requiresAuth: false } // 知識庫可以公開，當作 SEO Landing Page
+        meta: { requiresAuth: false }
       },
       {
         path: 'knowledge/:id',
@@ -220,7 +335,7 @@ const routes = [
         meta: { requiresAuth: false }
       },
 
-      // 系統設定
+      // ========== 系統設定 ==========
       {
         path: 'credits',
         name: 'Credits',
@@ -232,21 +347,42 @@ const routes = [
         component: () => import('../views/settings/UserSettings.vue')
       }     
     ]
+  },
+
+  // ========== 404 頁面 ==========
+  {
+    path: '/:pathMatch(.*)*',
+    name: 'NotFound',
+    component: () => import('../views/NotFound.vue')
   }
 ]
 
 const router = createRouter({
   history: createWebHistory(),
-  routes
+  routes,
+  scrollBehavior(to, from, savedPosition) {
+    if (savedPosition) {
+      return savedPosition
+    } else {
+      return { top: 0 }
+    }
+  }
 })
 
 // 路由守衛
 router.beforeEach(async (to, from, next) => {
+  const userStore = useUserStore()
   const requiresAuth = to.matched.some(record => record.meta.requiresAuth)
+
+  // 設置頁面標題
+  if (to.meta.title) {
+    document.title = `${to.meta.title} - 專利申請系統`
+  } else {
+    document.title = '專利申請系統'
+  }
 
   // 如果頁面需要 Expert 權限
   if (to.meta.requiresExpert) {
-    // 確保 User profile 已載入
     if (!userStore.profile) await userStore.fetchUser()
     
     if (userStore.profile?.role !== 'expert') {
@@ -261,7 +397,6 @@ router.beforeEach(async (to, from, next) => {
     if (!session) {
       next('/auth/login')
     } else {
-      const userStore = useUserStore()
       if (!userStore.user) {
         await userStore.fetchUser()
       }
