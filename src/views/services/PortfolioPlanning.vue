@@ -1,3 +1,4 @@
+<!-- src/views/services/PortfolioPlanning.vue -->
 <template>
   <div class="planning-page">
     <div class="page-header">

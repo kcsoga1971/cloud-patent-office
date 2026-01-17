@@ -392,6 +392,7 @@ import { useRouter, useRoute } from 'vue-router'
 import { supabase } from '../../supabase'
 import { useUserStore } from '../../stores/user'
 import DefenseResultPanel from './DefenseResultPanel.vue'
+import ServiceTips from '../../components/ServiceTips.vue'
 
 const router = useRouter()
 const route = useRoute()
@@ -451,6 +452,12 @@ const handleStartClick = () => {
 const loadExistingJob = async () => {
   if (!jobId.value) return
   
+  // ✅ 防止重複載入
+  if (isProcessing.value || resultData.value) {
+    console.log('⚠️ 已經在處理中或已有結果，跳過載入')
+    return
+  }
+  
   console.log('📂 載入現有案件:', jobId.value)
   
   try {
@@ -464,7 +471,6 @@ const loadExistingJob = async () => {
     
     console.log('✅ 案件資料:', data)
     
-    // ✅ 關鍵：先設定狀態
     jobStatus.value = data.phase || data.status
     patentNumber.value = data.my_patent_drafting_number || ''
     
@@ -473,7 +479,7 @@ const loadExistingJob = async () => {
       userNotes.value = data.input_data.user_notes || ''
     }
     
-    // 檢查是否已完成
+    // ========== ✅ 檢查是否已完成 ==========
     if (data.status === 'completed' && data.result_data) {
       console.log('✅ 案件已完成，載入結果')
       
@@ -488,33 +494,13 @@ const loadExistingJob = async () => {
       
       if (parsedResult && (parsedResult.analysis_summary || parsedResult.argument)) {
         resultData.value = parsedResult
-        isProcessing.value = false  // ✅ 設為 false
-        isInit.value = false         // ✅ 設為 false
+        isProcessing.value = false
+        isInit.value = false
         return
       }
     }
     
-    // 處理中狀態
-    const processingStatuses = ['pending', 'drafting', 'reserved', 'processing']
-    
-    if (processingStatuses.includes(data.status)) {
-      console.log('⏳ 案件處理中，開始輪詢...')
-      console.log('📊 當前狀態:', {
-        status: data.status,
-        phase: data.phase,
-        payment_status: data.payment_status
-      })
-      
-      // ✅ 關鍵：設定正確的狀態
-      isInit.value = false          // ✅ 不是初始狀態
-      isProcessing.value = true     // ✅ 是處理中狀態
-      isUploading.value = false     // ✅ 不是上傳中
-      
-      startPolling()
-      return
-    }
-    
-    // 失敗狀態
+    // ========== ✅ 檢查是否失敗 ==========
     if (data.status === 'failed') {
       console.error('❌ 案件失敗')
       alert('此案件分析失敗，請重新建立。')
@@ -523,7 +509,62 @@ const loadExistingJob = async () => {
       return
     }
     
-    // 未知狀態
+    // ========== 🆕 關鍵：檢查 pending 狀態的時效性 ==========
+    const processingStatuses = ['pending', 'drafting', 'reserved', 'processing']
+    
+    if (processingStatuses.includes(data.status)) {
+      // ✅ 檢查建立時間
+      const createdAt = new Date(data.created_at)
+      const now = new Date()
+      const minutesElapsed = (now - createdAt) / 1000 / 60
+      
+      console.log(`⏱️ 案件建立於 ${minutesElapsed.toFixed(1)} 分鐘前`)
+      
+      // ✅ 如果超過 10 分鐘還是 pending，可能是啟動失敗
+      if (minutesElapsed > 10) {
+        console.warn('⚠️ 案件超過 10 分鐘仍未完成，可能啟動失敗')
+        
+        const shouldRetry = confirm(
+          '此案件已超過 10 分鐘仍未完成，可能啟動失敗。\n\n' +
+          '是否重新啟動分析流程？\n' +
+          '（將重新呼叫 n8n，不會重複扣款）'
+        )
+        
+        if (shouldRetry) {
+          console.log('🔄 用戶選擇重新啟動')
+          await retriggerWebhook(data)
+          
+          // 重新啟動後開始輪詢
+          isInit.value = false
+          isProcessing.value = true
+          isUploading.value = false
+          startPolling()
+        } else {
+          console.log('❌ 用戶取消重新啟動')
+          isProcessing.value = false
+          isInit.value = true
+        }
+        
+        return
+      }
+      
+      // ✅ 時間正常，繼續輪詢
+      console.log('⏳ 案件處理中，開始輪詢...')
+      console.log('📊 當前狀態:', {
+        status: data.status,
+        phase: data.phase,
+        payment_status: data.payment_status
+      })
+      
+      isInit.value = false
+      isProcessing.value = true
+      isUploading.value = false
+      
+      startPolling()
+      return
+    }
+    
+    // ========== 未知狀態 ==========
     console.warn('⚠️ 未知狀態:', data.status)
     alert(`案件狀態異常：${data.status}`)
     isProcessing.value = false
@@ -534,6 +575,81 @@ const loadExistingJob = async () => {
     alert('載入案件失敗：' + err.message)
     isProcessing.value = false
     isInit.value = true
+  }
+}
+
+// ========== 🆕 重新觸發 Webhook ==========
+const retriggerWebhook = async (jobData) => {
+  console.log('🔄 重新觸發 n8n Webhook...')
+  
+  try {
+    const webhookUrl = import.meta.env.VITE_N8N_WEBHOOK_DEFENSE_URL
+
+    if (!webhookUrl) {
+      throw new Error('❌ 環境變數 VITE_N8N_WEBHOOK_DEFENSE_URL 未設定')
+    }
+
+    console.log('📡 Webhook URL:', webhookUrl)
+    console.log('📦 發送資料:', { 
+      job_id: jobData.id, 
+      transaction_id: jobData.transaction_id,
+      user_id: jobData.user_id,
+      strategy: jobData.input_data?.strategy,
+      user_notes: jobData.input_data?.user_notes
+    })
+
+    const response = await fetch(webhookUrl, {
+      method: 'POST',
+      headers: { 
+        'Content-Type': 'application/json',
+        'Accept': 'application/json'
+      },
+      body: JSON.stringify({ 
+        job_id: jobData.id,
+        transaction_id: jobData.transaction_id,
+        user_id: jobData.user_id,
+        strategy: jobData.input_data?.strategy || 'ai_recommended',
+        user_notes: jobData.input_data?.user_notes || ''
+      })
+    })
+
+    console.log('📡 Webhook 回應狀態:', response.status)
+
+    if (!response.ok) {
+      const errorText = await response.text()
+      console.error('❌ Webhook 回應錯誤:', errorText)
+      throw new Error(`Webhook 呼叫失敗: ${response.status}`)
+    }
+
+    const responseText = await response.text()
+    let webhookResult = null
+
+    if (responseText) {
+      try {
+        webhookResult = JSON.parse(responseText)
+        console.log('✅ Webhook 回應成功:', webhookResult)
+      } catch (parseError) {
+        console.warn('⚠️ Webhook 回應不是 JSON 格式:', responseText)
+      }
+    } else {
+      console.log('✅ Webhook 已觸發（無回應內容）')
+    }
+    
+    // ✅ 更新案件狀態為 processing（避免再次被判定為失敗）
+    //await supabase
+    //  .from('saas_jobs')
+    //  .update({ 
+    //    status: 'processing',
+    //    updated_at: new Date().toISOString()
+    //  })
+    //  .eq('id', jobData.id)
+    
+    console.log('✅ Webhook 重新觸發成功')
+
+  } catch (webhookError) {
+    console.error('❌ Webhook 重新觸發失敗:', webhookError)
+    alert('重新啟動失敗：' + webhookError.message)
+    throw webhookError
   }
 }
 
@@ -595,14 +711,14 @@ const executeDefenseJob = async () => {
     console.log('✅ 案件建立成功, Job ID:', job.id)
 
     // 🔗 更新 Transaction 的 job_id
-    try {
-      await supabase.rpc('update_transaction_job', {
-        p_transaction_id: transactionId,
-        p_job_id: job.id
-      })
-    } catch (e) { 
-      console.warn('⚠️ 無法更新 Transaction Job ID (非致命錯誤)', e) 
-    }
+    //try {
+    //  await supabase.rpc('update_transaction_job', {
+    //    p_transaction_id: transactionId,
+    //    p_job_id: job.id
+    //  })
+    //} catch (e) { 
+    //  console.warn('⚠️ 無法更新 Transaction Job ID (非致命錯誤)', e) 
+    //}
 
     // 📂 C. 上傳檔案
     console.log('📂 正在上傳檔案...')
@@ -672,8 +788,20 @@ const executeDefenseJob = async () => {
         throw new Error(`Webhook 呼叫失敗: ${response.status}`)
       }
 
-      const webhookResult = await response.json()
-      console.log('✅ Webhook 回應成功:', webhookResult)
+      // ✅ 修正後（可處理空回應）
+      const responseText = await response.text()
+      let webhookResult = null
+
+      if (responseText) {
+        try {
+          webhookResult = JSON.parse(responseText)
+          console.log('✅ Webhook 回應成功:', webhookResult)
+        } catch (parseError) {
+          console.warn('⚠️ Webhook 回應不是 JSON 格式:', responseText)
+        }
+      } else {
+        console.log('✅ Webhook 已觸發（無回應內容）')
+      }
 
     } catch (webhookError) {
       console.error('❌ Webhook 呼叫異常:', webhookError)
@@ -719,16 +847,23 @@ const executeDefenseJob = async () => {
 }
 
 const startPolling = () => {
-  if (pollTimer.value) clearInterval(pollTimer.value)
+  // ✅ 關鍵：先清除舊的輪詢
+  if (pollTimer.value) {
+    console.log('🛑 停止舊的輪詢')
+    clearInterval(pollTimer.value)
+    pollTimer.value = null
+  }
+  
   console.log('🔄 開始輪詢狀態...')
   
   let pollCount = 0
-  const maxPolls = 120 // 最多輪詢 120 次（6 分鐘）
+  const maxPolls = 120
   
   pollTimer.value = setInterval(async () => {
     if (!jobId.value) {
       console.warn('⚠️ jobId 不存在，停止輪詢')
       clearInterval(pollTimer.value)
+      pollTimer.value = null
       return
     }
 
@@ -749,57 +884,120 @@ const startPolling = () => {
     console.log('📊 輪詢狀態:', {
       status: data.status,
       phase: data.phase,
-      has_result: !!data.result_data
+      has_result: !!data.result_data,
+      payment_status: data.payment_status
     })
 
     jobStatus.value = data.phase || data.status
 
+    // ✅ 關鍵修正：處理 result_data（雙重 JSON 字串）
+    if (data.result_data) {
+      let parsedResult = data.result_data
+      
+      // 如果是字串，嘗試解析
+      if (typeof parsedResult === 'string') {
+        try {
+          parsedResult = JSON.parse(parsedResult)
+          
+          // 如果解析後還是字串（雙重 JSON），再解析一次
+          if (typeof parsedResult === 'string') {
+            console.log('⚠️ 偵測到雙重 JSON 字串，進行二次解析')
+            parsedResult = JSON.parse(parsedResult)
+          }
+          
+          console.log('✅ result_data 解析成功:', parsedResult)
+          
+        } catch (e) {
+          console.error('❌ 解析 result_data 失敗:', e)
+          console.error('原始資料:', data.result_data)
+        }
+      }
+      
+      // ✅ 更新解析後的資料
+      data.result_data = parsedResult
+    }
+    
+    // ✅ 加強 log：檢查條件
+    console.log('🔍 檢查完成條件:', {
+      'status === completed': data.status === 'completed',
+      'has result_data': !!data.result_data,
+      'has analysis_summary': !!(data.result_data?.analysis_summary),
+      'has argument': !!(data.result_data?.argument)
+    })
+    
     // ✅ 檢查是否完成
     if (data.status === 'completed' && data.result_data) {
-      console.log('✅ 任務完成！')
+      console.log('✅ 案件已完成，載入分析結果')
       
-      // 💰 確認扣款（如果有 transaction_id）
+      // 💰 確認扣款
       if (data.payment_status === 'reserved' && data.transaction_id) {
-        console.log('💰 確認扣款...')
+        console.log('💰 開始確認扣款...')
         try {
-          await supabase.rpc('confirm_deduction', {
+          const { data: deductResult, error: deductError } = await supabase.rpc('confirm_deduction', {
             p_transaction_id: data.transaction_id
           })
           
-          await supabase.from('saas_jobs')
+          if (deductError) {
+            console.error('❌ 扣款 RPC 失敗:', deductError)
+          } else {
+            console.log('✅ 扣款 RPC 成功:', deductResult)
+          }
+          
+          const { error: updateError } = await supabase
+            .from('saas_jobs')
             .update({ payment_status: 'completed' })
             .eq('id', jobId.value)
-            
+          
+          if (updateError) {
+            console.error('❌ 更新 payment_status 失敗:', updateError)
+          } else {
+            console.log('✅ payment_status 已更新為 completed')
+          }
+          
           await userStore.fetchUser()
           console.log('✅ 扣款確認完成')
         } catch (deductError) {
           console.error('❌ 扣款確認失敗:', deductError)
         }
+      } else {
+        console.log('⚠️ 跳過扣款確認:', {
+          payment_status: data.payment_status,
+          has_transaction_id: !!data.transaction_id
+        })
       }
 
-      // 解析結果
-      let parsedResult = data.result_data
-      if (typeof parsedResult === 'string') {
-        try { 
-          parsedResult = JSON.parse(parsedResult) 
-        } catch (e) {
-          console.error('❌ 解析結果失敗:', e)
-        }
-      }
-
-      if (parsedResult && (parsedResult.analysis_summary || parsedResult.argument)) {
-        resultData.value = parsedResult
+      // ✅ 修改這裡：檢查結果格式（更寬鬆的條件）
+      console.log('🔍 檢查結果格式:', {
+        'has result_data': !!data.result_data,
+        'has oa_analysis': !!(data.result_data?.oa_analysis),
+        'has citation_analyses': !!(data.result_data?.citation_analyses),
+        'has defense_argument': !!(data.result_data?.defense_argument),
+        'has argument': !!(data.result_data?.argument),
+        'has analysis_summary': !!(data.result_data?.analysis_summary)
+      })
+  
+      // ✅ 關鍵修改：只要有 result_data 且 status 是 completed 就停止輪詢
+      if (data.result_data && Object.keys(data.result_data).length > 0) {
+        console.log('🎉 結果格式正確，準備載入...')
+        resultData.value = data.result_data
         isProcessing.value = false
         clearInterval(pollTimer.value)
+        pollTimer.value = null
         console.log('🎉 結果載入完成！')
+        console.log('📊 最終 resultData:', resultData.value)
       } else {
-        console.warn('⚠️ 結果格式異常:', parsedResult)
+        console.warn('⚠️ 結果格式異常（result_data 為空）:', data.result_data)
+        // ✅ 即使格式異常，也停止輪詢（避免死迴圈）
+        isProcessing.value = false
+        clearInterval(pollTimer.value)
+        pollTimer.value = null
       }
     } 
     // ✅ 檢查是否失敗
     else if (data.status === 'failed') {
       console.error('❌ 任務失敗')
       clearInterval(pollTimer.value)
+      pollTimer.value = null
       isProcessing.value = false
       alert('AI 分析失敗，請稍後重試。')
     }
@@ -807,28 +1005,39 @@ const startPolling = () => {
     else if (pollCount >= maxPolls) {
       console.error('⏰ 輪詢超時')
       clearInterval(pollTimer.value)
+      pollTimer.value = null
       isProcessing.value = false
       alert('分析時間過長，請稍後重新整理頁面查看結果。')
+    } else {
+      console.log('⏳ 繼續輪詢...', { status: data.status, pollCount })
     }
-  }, 3000) // 每 3 秒輪詢一次
+  }, 3000)
 }
 
 // ========== 🆕 初始化邏輯 ==========
 onMounted(async () => {
+  console.log('🎬 DefensePage mounted')
+  console.log('📋 Route query:', route.query)
+  console.log('🆔 jobId:', jobId.value)
+  
   if (jobId.value) {
     // 如果有 job_id，載入現有案件
     await loadExistingJob()
+  } else {
+    // 否則顯示上傳介面
+    console.log('📤 顯示上傳介面')
+    isInit.value = true
+    isProcessing.value = false
   }
-  // 否則顯示上傳介面
 })
 
 onUnmounted(() => {
-  if (pollTimer.value) clearInterval(pollTimer.value)
+  console.log('🛑 DefensePage unmounted，清理輪詢')
+  if (pollTimer.value) {
+    clearInterval(pollTimer.value)
+    pollTimer.value = null
+  }
 })
-
-const handleExport = () => {
-  // 這個功能已移至 DefenseResultPanel 內部處理
-}
 </script>
 
 <style scoped>

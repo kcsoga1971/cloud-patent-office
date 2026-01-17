@@ -1,3 +1,4 @@
+<!-- src/views/services/Infringement.vue -->
 <template>
   <div class="infringement-page">
     <div class="page-header">

@@ -1,4 +1,5 @@
-<template>
+<!-- src/views/services/DesignAround.vue -->
+ <template>
   <div class="design-around-page">
     <div class="page-header">
       <button @click="router.push('/services/design-around-workflow')" class="btn-back">← 返回列表</button>

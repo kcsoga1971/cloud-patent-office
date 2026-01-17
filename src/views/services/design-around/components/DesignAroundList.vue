@@ -1,22 +1,14 @@
-<!-- src/views/services/PatentAnalysisWorkflow.vue -->
+<!-- src/views/services/design-around/components/DesignAroundList.vue -->
 <script setup>
-import { ref, computed, onMounted } from 'vue'
-import { useRouter } from 'vue-router'
-import { supabase } from '../../supabase'
-import { useUserStore } from '../../stores/user'
-import { formatDate } from '../../utils/formatters'
-import ServiceTips from '../../components/ServiceTips.vue'
+import { ref, onMounted, computed } from 'vue'
+import { supabase } from '@/supabase'
+import { useUserStore } from '@/stores/user'
 
-const router = useRouter()
+const emit = defineEmits(['create', 'select'])
 const userStore = useUserStore()
-
-const allJobs = ref([])
-const isLoading = ref(true)
+const jobs = ref([])
+const isLoading = ref(false)
 const activeFilter = ref('all')
-
-onMounted(async () => {
-  await loadJobs()
-})
 
 const loadJobs = async () => {
   isLoading.value = true
@@ -24,90 +16,93 @@ const loadJobs = async () => {
     const { data, error } = await supabase
       .from('saas_jobs')
       .select('*')
-      .eq('user_id', userStore.user.id)
-      .eq('job_type', 'patent_analysis')
-      .order('updated_at', { ascending: false })
-    
+      .eq('user_id', userStore.user?.id)
+      .eq('job_type', 'design_around')
+      .order('created_at', { ascending: false })
+
     if (error) throw error
-    allJobs.value = data || []
-  } catch (err) {
-    console.error('❌ 載入失敗:', err)
+    jobs.value = data || []
+  } catch (e) {
+    console.error('載入失敗:', e)
   } finally {
     isLoading.value = false
   }
 }
 
+const stats = computed(() => ({
+  total: jobs.value.length,
+  processing: jobs.value.filter(j => ['processing', 'pending'].includes(j.status)).length,
+  completed: jobs.value.filter(j => j.status === 'completed').length
+}))
+
 const filteredJobs = computed(() => {
-  if (activeFilter.value === 'all') return allJobs.value
-  return allJobs.value.filter(job => {
-    if (activeFilter.value === 'processing') return job.status === 'pending'
-    if (activeFilter.value === 'completed') return job.status === 'completed'
-    return true
-  })
-})
-
-const stats = computed(() => {
-  const jobs = allJobs.value
-  return {
-    total: jobs.length,
-    processing: jobs.filter(j => j.status === 'pending').length,
-    completed: jobs.filter(j => j.status === 'completed').length
+  if (activeFilter.value === 'all') return jobs.value
+  if (activeFilter.value === 'processing') {
+    return jobs.value.filter(j => ['processing', 'pending'].includes(j.status))
   }
+  if (activeFilter.value === 'completed') {
+    return jobs.value.filter(j => j.status === 'completed')
+  }
+  return jobs.value
 })
-
-const goToDetail = (jobId) => {
-  router.push({ path: '/services/patent-analysis', query: { job_id: jobId } })
-}
-
-const startNewJob = () => {
-  router.push('/services/patent-analysis')
-}
 
 const getStatusInfo = (job) => {
-  if (job.status === 'completed') return { label: '完成', icon: '✅', class: 'status-success' }
-  if (job.status === 'pending') return { label: '分析中', icon: '⏳', class: 'status-warning' }
-  if (job.status === 'failed') return { label: '失敗', icon: '❌', class: 'status-error' }
-  return { label: '處理中', icon: '📝', class: 'status-default' }
+  const map = {
+    'pending': { label: '待處理', icon: '⏳', class: 'status-info' },
+    'processing': { label: '分析中', icon: '⏳', class: 'status-warning' },
+    'pending_approval': { label: '待審核', icon: '📋', class: 'status-info' },
+    'completed': { label: '已完成', icon: '✅', class: 'status-success' },
+    'failed': { label: '失敗', icon: '❌', class: 'status-error' }
+  }
+  return map[job.status] || { label: job.status, icon: '📝', class: 'status-default' }
+}
+
+const formatDate = (dateString) => {
+  const date = new Date(dateString)
+  return date.toLocaleDateString('zh-TW', { 
+    year: 'numeric', 
+    month: '2-digit', 
+    day: '2-digit' 
+  })
 }
 
 const getJobTitle = (job) => {
-  const typeMap = {
-    'single_analysis': '單篇分析',
-    'tech_map': '技術圖譜',
-    'landscape_basic': '地圖(初步)',
-    'landscape_deep': '地圖(詳細)'
-  }
-  const type = typeMap[job.input_data?.analysis_type] || '分析'
-  const target = job.input_data?.patent_number || job.input_data?.keywords || '未命名'
-  return `[${type}] ${target}`
+  return job.input_data?.project_name || '未命名專案'
 }
 
-const getAnalysisType = (job) => {
-  const typeMap = {
-    'single_analysis': { label: '單篇分析', icon: '📄', color: '#3b82f6' },
-    'tech_map': { label: '技術圖譜', icon: '🗺️', color: '#8b5cf6' },
-    'landscape_basic': { label: '地圖(初步)', icon: '🌐', color: '#10b981' },
-    'landscape_deep': { label: '地圖(詳細)', icon: '🔬', color: '#f59e0b' }
+const getPhaseInfo = (phase) => {
+  const map = {
+    'init': { label: '初始化', icon: '🚀', color: '#94a3b8' },
+    'design_around_patent_collection': { label: '資料收集', icon: '📋', color: '#3b82f6' },
+    'design_around_patent_analysis': { label: '深度分析', icon: '🔍', color: '#8b5cf6' },
+    'design_around_portfolio_analysis': { label: '組合策略', icon: '🎯', color: '#f59e0b' },
+    'design_around_ideation': { label: '方案生成', icon: '💡', color: '#10b981' },
+    'design_around_risk_evaluation': { label: '風險評估', icon: '⚖️', color: '#ef4444' },
+    'completed': { label: '已完成', icon: '✅', color: '#22c55e' }
   }
-  return typeMap[job.input_data?.analysis_type] || { label: '分析', icon: '📊', color: '#64748b' }
+  return map[phase] || { label: phase, icon: '📝', color: '#64748b' }
 }
+
+onMounted(() => {
+  loadJobs()
+})
 </script>
 
 <template>
   <div class="workflow-container">
     <!-- 🎨 風格 B：漸層標題區 -->
     <div class="page-header">
-      <div class="header-icon">📊</div>
+      <div class="header-icon">🛡️</div>
       <div class="header-content">
-        <h1>專利情報分析 (Patent Analysis)</h1>
-        <p class="subtitle">AI 智能分析專利技術、市場趨勢與競爭態勢</p>
+        <h1>專利迴避設計 (Design Around)</h1>
+        <p class="subtitle">AI 智能分析專利風險並生成創新迴避方案</p>
       </div>
       <div class="header-actions">
         <button @click="loadJobs" class="btn-refresh">
           🔄 重新整理
         </button>
-        <button @click="startNewJob" class="btn-new">
-          ➕ 新增分析
+        <button @click="emit('create')" class="btn-new">
+          ➕ 新建專案
         </button>
       </div>
     </div>
@@ -134,7 +129,7 @@ const getAnalysisType = (job) => {
         <div class="stat-icon">⏳</div>
         <div class="stat-content">
           <span class="stat-value">{{ stats.processing }}</span>
-          <span class="stat-label">分析中</span>
+          <span class="stat-label">進行中</span>
         </div>
       </div>
 
@@ -157,10 +152,10 @@ const getAnalysisType = (job) => {
       <p>載入中...</p>
     </div>
 
-    <!-- 案件列表 -->
+    <!-- 專案列表 -->
     <div v-else-if="filteredJobs.length > 0" class="jobs-section">
       <div class="section-header">
-        <h3>📋 分析專案列表</h3>
+        <h3>📋 迴避設計專案列表</h3>
         <span class="job-count">共 {{ filteredJobs.length }} 個專案</span>
       </div>
 
@@ -169,7 +164,7 @@ const getAnalysisType = (job) => {
           v-for="job in filteredJobs" 
           :key="job.id" 
           class="job-card"
-          @click="goToDetail(job.id)"
+          @click="emit('select', job.id)"
         >
           <div class="card-header">
             <div class="job-id-badge">
@@ -181,30 +176,30 @@ const getAnalysisType = (job) => {
             </div>
           </div>
           
-          <!-- 分析類型標籤 -->
-          <div class="analysis-type-badge" :style="{ 
-            background: `${getAnalysisType(job).color}15`,
-            color: getAnalysisType(job).color,
-            borderColor: `${getAnalysisType(job).color}40`
-          }">
-            <span class="type-icon">{{ getAnalysisType(job).icon }}</span>
-            <span class="type-label">{{ getAnalysisType(job).label }}</span>
-          </div>
-
           <h3 class="job-title">{{ getJobTitle(job) }}</h3>
+
+          <!-- 階段標籤 -->
+          <div 
+            class="phase-badge" 
+            :style="{ 
+              background: `${getPhaseInfo(job.current_phase).color}15`,
+              color: getPhaseInfo(job.current_phase).color,
+              borderColor: `${getPhaseInfo(job.current_phase).color}40`
+            }"
+          >
+            <span class="phase-icon">{{ getPhaseInfo(job.current_phase).icon }}</span>
+            <span class="phase-label">{{ getPhaseInfo(job.current_phase).label }}</span>
+          </div>
 
           <div class="job-meta">
             <span class="meta-item">
               📅 {{ formatDate(job.created_at) }}
             </span>
-            <span v-if="job.credits_deducted" class="meta-item credits">
-              💎 {{ job.credits_deducted }} 點
-            </span>
           </div>
 
           <div class="card-footer">
             <button class="btn-view">
-              查看報告 →
+              查看詳情 →
             </button>
           </div>
         </div>
@@ -214,15 +209,12 @@ const getAnalysisType = (job) => {
     <!-- 空狀態 -->
     <div v-else class="empty-state">
       <div class="empty-icon">📭</div>
-      <h3>尚無分析專案</h3>
-      <p>開始您的第一個專利情報分析</p>
-      <button @click="startNewJob" class="btn-start">
-        開始第一個分析
+      <h3>尚無迴避設計專案</h3>
+      <p>開始您的第一個專利迴避分析</p>
+      <button @click="emit('create')" class="btn-start">
+        開始第一個專案
       </button>
     </div>
-
-    <!-- ServiceTips -->
-    <ServiceTips type="analysis" />
   </div>
 </template>
 
@@ -505,6 +497,11 @@ const getAnalysisType = (job) => {
   color: #991b1b;
 }
 
+.status-badge.status-info {
+  background: #dbeafe;
+  color: #1e40af;
+}
+
 .status-badge.status-default {
   background: #f1f5f9;
   color: #475569;
@@ -514,8 +511,16 @@ const getAnalysisType = (job) => {
   font-size: 14px;
 }
 
-/* ========== 🎨 分析類型標籤（新增） ========== */
-.analysis-type-badge {
+.job-title {
+  font-size: 18px;
+  font-weight: 700;
+  color: #1e293b;
+  margin: 0 0 12px 0;
+  line-height: 1.4;
+}
+
+/* ========== 🎨 階段標籤（新增） ========== */
+.phase-badge {
   display: inline-flex;
   align-items: center;
   gap: 8px;
@@ -527,20 +532,12 @@ const getAnalysisType = (job) => {
   margin-bottom: 12px;
 }
 
-.type-icon {
+.phase-icon {
   font-size: 16px;
 }
 
-.type-label {
+.phase-label {
   letter-spacing: 0.5px;
-}
-
-.job-title {
-  font-size: 18px;
-  font-weight: 700;
-  color: #1e293b;
-  margin: 0 0 16px 0;
-  line-height: 1.4;
 }
 
 .job-meta {
@@ -555,11 +552,6 @@ const getAnalysisType = (job) => {
 .meta-item {
   font-size: 13px;
   color: #64748b;
-}
-
-.meta-item.credits {
-  color: #f59e0b;
-  font-weight: 700;
 }
 
 .card-footer {
@@ -670,3 +662,6 @@ const getAnalysisType = (job) => {
   }
 }
 </style>
+
+
+

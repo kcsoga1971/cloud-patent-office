@@ -1,3 +1,4 @@
+<!-- src/views/auth/Login.vue -->
 <template>
   <div class="login-wrapper">
     <div class="login-card">
@@ -13,8 +14,11 @@
       <form @submit.prevent="handleAuth" class="auth-form">
         
         <div class="form-group">
-          <label>電子信箱</label>
+          <label for="email">電子信箱</label>
+          <!-- 修改處 1: 加入 name="email" 和 id="email" -->
           <input 
+            id="email"
+            name="email"
             type="email" 
             v-model="email" 
             placeholder="請輸入 Email" 
@@ -24,8 +28,11 @@
         </div>
 
         <div class="form-group">
-          <label>密碼</label>
+          <label for="password">密碼</label>
+          <!-- 修改處 2: 加入 name="password" 和 id="password" -->
           <input 
+            id="password"
+            name="password"
             type="password" 
             v-model="password" 
             placeholder="請輸入密碼 (至少 6 碼)" 
@@ -35,7 +42,8 @@
           />
         </div>
 
-        <button type="submit" class="btn-submit" :disabled="loading">
+        <!-- 修改處 3: 加入 name="submit-btn" 確保按鈕也能被精準抓到 -->
+        <button type="submit" name="submit-btn" class="btn-submit" :disabled="loading">
           <span v-if="loading">⏳ 處理中...</span>
           <span v-else>{{ isLoginMode ? '登入系統' : '註冊新帳號' }}</span>
         </button>

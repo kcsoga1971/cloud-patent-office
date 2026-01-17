@@ -4,6 +4,8 @@ import { createPinia } from 'pinia'
 import './style.css'
 import App from './App.vue'
 import router from './router' // 確保有這行
+// ✅ 引入 Element Plus
+import ElementPlus from 'element-plus'
 
 const app = createApp(App)
 
@@ -11,3 +13,4 @@ app.use(createPinia())
 app.use(router) // 確保有這行
 
 app.mount('#app')
+app.use(ElementPlus)  // ✅ 註冊 Element Plus

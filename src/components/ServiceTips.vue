@@ -1,3 +1,4 @@
+<!-- src/components/ServiceTips.vue -->
 <template>
   <div class="tips-section" v-if="currentTips">
     <h4>💡 {{ title }} - 專家小撇步</h4>

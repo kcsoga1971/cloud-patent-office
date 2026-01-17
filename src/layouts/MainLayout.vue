@@ -24,7 +24,7 @@
           <span class="icon">🔍</span> 各國專利檢索
         </router-link>
         
-        <router-link to="/services/design-around-workflow" class="nav-item">
+        <router-link to="/services/design-around" class="nav-item">
           <span class="icon">🎯</span> 專利迴避設計
         </router-link>
         
@@ -32,7 +32,7 @@
           <span class="icon">🛡️</span> 專利答辯
         </router-link>
 
-        <router-link to="/services/portfolio-workflow" class="nav-item">
+        <router-link to="/services/portfolio" class="nav-item">
           <span class="icon">♟️</span> 專利佈局
         </router-link>        
         
@@ -109,7 +109,7 @@ const handleLogout = async () => {
 </script>
 
 <style scoped>
-/* 保持原有樣式，這裡不需要變更 */
+/* ========== 容器設定 ========== */
 .app-container {
   display: flex;
   height: 100vh;
@@ -117,18 +117,24 @@ const handleLogout = async () => {
   overflow: hidden;
 }
 
+/* ========== 側邊欄：固定式設計 ========== */
 .sidebar {
+  position: fixed; /* ✅ 固定在左側 */
+  left: 0;
+  top: 0;
   width: 260px;
+  height: 100vh; /* ✅ 佔滿整個視窗高度 */
   background-color: #1e293b;
   color: #f8fafc;
   display: flex;
   flex-direction: column;
   padding: 1.5rem;
   border-right: 1px solid #334155;
-  overflow-y: auto;
+  overflow-y: auto; /* ✅ 如果內容太多，允許側邊欄內部捲動 */
+  z-index: 1000; /* ✅ 確保在最上層 */
 }
 
-/* 隱藏側邊欄的捲軸，但保留滾動功能 (Optional) */
+/* 美化捲軸 */
 .sidebar::-webkit-scrollbar {
   width: 6px;
 }
@@ -136,66 +142,94 @@ const handleLogout = async () => {
   background-color: #334155;
   border-radius: 3px;
 }
+.sidebar::-webkit-scrollbar-track {
+  background-color: transparent;
+}
 
+/* ========== Logo 區域 ========== */
 .logo {
   font-size: 1.25rem;
   font-weight: bold;
-  margin-bottom: 2.5rem;
+  margin-bottom: 2rem;
   display: flex;
   align-items: center;
   gap: 0.5rem;
+  flex-shrink: 0; /* ✅ 防止被壓縮 */
 }
 
+/* ========== 導航選單：均勻分配 ========== */
 .nav-menu {
-  flex: 1;
+  flex: 1; /* ✅ 佔據剩餘空間 */
   display: flex;
   flex-direction: column;
-  gap: 0.5rem;
+  gap: 0.25rem; /* ✅ 減少間距，讓選項更緊湊 */
+  overflow-y: auto; /* ✅ 如果選項太多，允許捲動 */
+  padding-right: 0.5rem; /* ✅ 避免捲軸遮住文字 */
 }
 
+/* 隱藏 nav-menu 的捲軸 */
+.nav-menu::-webkit-scrollbar {
+  width: 4px;
+}
+.nav-menu::-webkit-scrollbar-thumb {
+  background-color: #334155;
+  border-radius: 2px;
+}
+
+/* ========== 分類標籤 ========== */
 .menu-label {
-  font-size: 0.75rem;
+  font-size: 0.7rem;
   color: #94a3b8;
-  margin-top: 1.5rem;
-  margin-bottom: 0.5rem;
+  margin-top: 1rem;
+  margin-bottom: 0.25rem;
   padding-left: 0.75rem;
   text-transform: uppercase;
   letter-spacing: 0.05em;
   font-weight: 600;
+  flex-shrink: 0; /* ✅ 防止被壓縮 */
 }
 
+/* ========== 導航項目 ========== */
 .nav-item {
   display: flex;
   align-items: center;
-  padding: 0.75rem 1rem;
+  padding: 0.65rem 1rem; /* ✅ 減少上下間距 */
   color: #cbd5e1;
   text-decoration: none;
   border-radius: 0.5rem;
   transition: all 0.2s;
-  font-size: 0.95rem;
+  font-size: 0.9rem; /* ✅ 稍微縮小字體 */
+  flex-shrink: 0; /* ✅ 防止被壓縮 */
+  white-space: nowrap; /* ✅ 防止文字換行 */
 }
 
-.nav-item .icon, .nav-item .nav-icon {
+.nav-item .icon, 
+.nav-item .nav-icon {
   margin-right: 0.75rem;
-  font-size: 1.1rem;
-  width: 1.5rem; /* 固定寬度確保對齊 */
+  font-size: 1rem;
+  width: 1.5rem;
   text-align: center;
+  flex-shrink: 0; /* ✅ 圖標不縮小 */
 }
 
 .nav-item:hover {
   background-color: #334155;
   color: white;
+  transform: translateX(4px); /* ✅ 滑鼠懸停時微微右移 */
 }
 
 .router-link-active {
   background-color: #2563eb;
   color: white;
+  font-weight: 600;
 }
 
+/* ========== 用戶面板：固定在底部 ========== */
 .user-panel {
   border-top: 1px solid #334155;
-  padding-top: 1.5rem;
+  padding-top: 1rem;
   margin-top: 1rem;
+  flex-shrink: 0; /* ✅ 防止被壓縮 */
 }
 
 .user-info {
@@ -230,6 +264,8 @@ const handleLogout = async () => {
   border-radius: 0.375rem;
   cursor: pointer;
   transition: all 0.2s;
+  font-size: 0.9rem;
+  font-weight: 500;
 }
 
 .logout-btn:hover {
@@ -237,10 +273,47 @@ const handleLogout = async () => {
   color: white;
 }
 
+/* ========== 主內容區域：自動適應 ========== */
 .main-content {
+  margin-left: 260px; /* ✅ 留出側邊欄的空間 */
   flex: 1;
   background-color: #f9fafb;
   overflow-y: auto;
   padding: 2rem;
+  width: calc(100vw - 260px); /* ✅ 確保不超出視窗 */
+}
+
+/* ========== 響應式設計 ========== */
+@media (max-width: 768px) {
+  .sidebar {
+    width: 220px; /* ✅ 手機版縮小側邊欄 */
+  }
+  
+  .main-content {
+    margin-left: 220px;
+    width: calc(100vw - 220px);
+    padding: 1rem;
+  }
+  
+  .nav-item {
+    font-size: 0.85rem;
+    padding: 0.6rem 0.75rem;
+  }
+  
+  .logo {
+    font-size: 1.1rem;
+  }
+}
+
+@media (max-width: 480px) {
+  .sidebar {
+    width: 200px;
+  }
+  
+  .main-content {
+    margin-left: 200px;
+    width: calc(100vw - 200px);
+  }
 }
 </style>
+

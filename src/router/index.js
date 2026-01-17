@@ -5,10 +5,10 @@ import { useUserStore } from '../stores/user'
 import MainLayout from '../layouts/MainLayout.vue'
 import AuthLayout from '../layouts/AuthLayout.vue'
 
-// 引入 Views
+// 引入 Views (舊有的 Workflow 引用，若已刪除檔案請移除對應引用)
 import DefensePage from '../views/services/DefensePage.vue'
 import DefenseWorkflow from '../views/services/DefenseWorkflow.vue'
-import DesignAroundWorkflow from '../views/services/DesignAroundWorkflow.vue'
+// import DesignAroundWorkflow from '../views/services/DesignAroundWorkflow.vue' // ❌ 移除舊版引用
 import InfringementWorkflow from '../views/services/InfringementWorkflow.vue'
 import PatentAnalysisWorkflow from '../views/services/PatentAnalysisWorkflow.vue'
 import ValuationWorkflow from '../views/services/ValuationWorkflow.vue'
@@ -24,8 +24,6 @@ import AmendmentWorkflow from '../views/services/AmendmentWorkflow.vue'
 import CorrectionWorkflow from '../views/services/CorrectionWorkflow.vue'
 import ReexaminationWorkflow from '../views/services/ReexaminationWorkflow.vue'
 import RectificationWorkflow from '../views/services/RectificationWorkflow.vue'
-const PortfolioWorkflow = () => import('../views/services/PortfolioWorkflow.vue')
-const PortfolioPlanning = () => import('../views/services/PortfolioPlanning.vue')
 
 const routes = [
   // 認證相關路由
@@ -85,29 +83,33 @@ const routes = [
         path: 'services/patent-search',
         name: 'PatentSearch',
         component: PatentSearch,
-        meta: { requiresAuth: true }
+        meta: { requiresAuth: true, title: '專利檢索' }
       },
 
-      // 2. 迴避設計 (Design Around)
-      {
-        path: 'services/design-around-workflow',
-        name: 'DesignAroundWorkflow',
-        component: DesignAroundWorkflow,
-        meta: { requiresAuth: true }
-      },
+      // 2. 迴避設計 (Design Around) - ✅ 更新為新版 Manager
       {
         path: 'services/design-around',
-        name: 'DesignAround',
-        component: () => import('../views/services/DesignAround.vue'),
-        meta: { requiresAuth: true }
+        name: 'DesignAroundManager',
+        // 指向新的資料夾結構
+        component: () => import('../views/services/design-around/DesignAroundManager.vue'),
+        meta: { requiresAuth: true, title: '專利迴避設計' }
+      },
+      // (舊的 /services/design-around-workflow 路由已移除，由 Manager 統一管理)
+
+      // 3. 專利佈局 (Portfolio) - ✅ 更新為新版 Manager
+      {
+        path: 'services/portfolio',
+        name: 'PortfolioManager',
+        component: () => import('../views/services/portfolio/PortfolioManager.vue'),
+        meta: { requiresAuth: true, title: '專利佈局策略' }
       },
 
-      // 3. 專利答辯
+      // 4. 專利答辯
       {
         path: 'services/defense-workflow', 
         name: 'DefenseWorkflow',
         component: DefenseWorkflow,
-        meta: { requiresAuth: true }
+        meta: { requiresAuth: true, title: '專利答辯' }
       },
       {
         path: 'services/defense',
@@ -116,7 +118,7 @@ const routes = [
         meta: { requiresAuth: true }
       },
 
-      // 4. 其他分析服務
+      // 5. 其他分析服務
       {
         path: 'services/patent-analysis-workflow',
         name: 'PatentAnalysisWorkflow',
@@ -156,13 +158,13 @@ const routes = [
       {
         path: 'services/invalidation-workflow',
         name: 'InvalidationWorkflow',
-        component: InvalidationWorkflow,
-        meta: { requiresAuth: true }
+        component: () => import('../views/services/InvalidationWorkflow.vue'),
+        meta: { requiresAuth: true, title: '專利舉發' }
       },
       {
         path: 'services/invalidation',
-        name: 'Invalidation',
-        component: () => import('../views/services/Invalidation.vue'),
+        name: 'PatentInvalidation',
+        component: () => import('../views/services/InvalidationPage.vue'),
         meta: { requiresAuth: true }
       },
       {
@@ -181,7 +183,7 @@ const routes = [
         path: 'services/drafting',
         name: 'PatentDrafting',
         component: () => import('../views/services/Drafting.vue'),
-        meta: { requiresAuth: true }
+        meta: { requiresAuth: true, title: '專利撰寫' }
       },
       {
         path: 'services/drafting/edit/:jobId',
@@ -205,18 +207,6 @@ const routes = [
         path: 'services/submission/:jobId',
         name: 'SubmissionPrep',
         component: () => import('../views/services/SubmissionPrep.vue'),
-        meta: { requiresAuth: true }
-      },
-      {
-        path: 'services/portfolio-workflow',
-        name: 'PortfolioWorkflow',
-        component: PortfolioWorkflow,
-        meta: { requiresAuth: true }
-      },
-      {
-        path: 'services/portfolio-planning',
-        name: 'PortfolioPlanning',
-        component: PortfolioPlanning,
         meta: { requiresAuth: true }
       },
 

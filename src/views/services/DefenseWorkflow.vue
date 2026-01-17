@@ -10,12 +10,10 @@ import ServiceTips from '../../components/ServiceTips.vue'
 const router = useRouter()
 const userStore = useUserStore()
 
-// ========== 資料 ==========
 const allJobs = ref([])
 const isLoading = ref(true)
 const activeFilter = ref('all')
 
-// ========== 載入所有答辯案件 ==========
 onMounted(async () => {
   await loadDefenseJobs()
 })
@@ -53,13 +51,11 @@ const loadDefenseJobs = async () => {
     
   } catch (err) {
     console.error('❌ 載入案件失敗:', err)
-    console.warn('載入案件失敗：' + err.message)
   } finally {
     isLoading.value = false
   }
 }
 
-// ========== 過濾邏輯 ==========
 const filteredJobs = computed(() => {
   if (activeFilter.value === 'all') return allJobs.value
   
@@ -74,7 +70,6 @@ const filteredJobs = computed(() => {
   })
 })
 
-// ========== 統計資料 ==========
 const stats = computed(() => {
   const jobs = allJobs.value
   return {
@@ -84,7 +79,6 @@ const stats = computed(() => {
   }
 })
 
-// ========== 導航 ==========
 const goToDefenseDetail = (jobId) => {
   router.push({
     path: '/services/defense',
@@ -96,136 +90,207 @@ const startNewDefense = () => {
   router.push('/services/defense')
 }
 
-// ========== 狀態顯示輔助函式 ==========
 const getStatusInfo = (job) => {
-  if (job.status === 'completed') return { label: '✅ 分析完成', class: 'status-success' }
-  if (job.status === 'exported') return { label: '📤 已匯出', class: 'status-info' }
-  if (job.status === 'pending') return { label: '⏳ AI 分析中', class: 'status-warning' }
-  if (job.status === 'reserved') return { label: '💰 已付款待執行', class: 'status-warning' }
-  if (job.status === 'failed') return { label: '❌ 失敗', class: 'status-error' }
-  return { label: '📝 處理中', class: 'status-default' }
+  if (job.status === 'completed') return { label: '分析完成', icon: '✅', class: 'status-success' }
+  if (job.status === 'exported') return { label: '已匯出', icon: '📤', class: 'status-info' }
+  if (job.status === 'pending') return { label: 'AI 分析中', icon: '⏳', class: 'status-warning' }
+  if (job.status === 'reserved') return { label: '已付款待執行', icon: '💰', class: 'status-warning' }
+  if (job.status === 'failed') return { label: '失敗', icon: '❌', class: 'status-error' }
+  return { label: '處理中', icon: '📝', class: 'status-default' }
+}
+
+const getStrategyLabel = (job) => {
+  const strategy = job.input_data?.strategy
+  if (strategy === 'conservative') return { label: '保守策略', icon: '🛡️', color: '#3b82f6' }
+  if (strategy === 'aggressive') return { label: '積極策略', icon: '⚔️', color: '#ef4444' }
+  return { label: 'AI 推薦', icon: '🤖', color: '#8b5cf6' }
 }
 </script>
 
 <template>
   <div class="workflow-container">
-    <div class="header">
-      <div class="header-left">
-        <h1>🛡️ 專利答辯案件管理</h1>
-        <p class="subtitle">追蹤您的 OA 答辯分析進度與歷史紀錄</p>
+    <!-- 🎨 風格 B：漸層標題區 -->
+    <div class="page-header">
+      <div class="header-icon">🛡️</div>
+      <div class="header-content">
+        <h1>專利答辯 (OA Response)</h1>
+        <p class="subtitle">AI 智能分析核駁理由並生成答辯策略</p>
       </div>
       <div class="header-actions">
-        <button @click="loadDefenseJobs" class="btn-secondary">🔄 重新整理</button>
-        <button @click="startNewDefense" class="btn-new">➕ 新增答辯</button>
+        <button @click="loadDefenseJobs" class="btn-refresh">
+          🔄 重新整理
+        </button>
+        <button @click="startNewDefense" class="btn-new">
+          ➕ 新增答辯
+        </button>
       </div>
     </div>
 
-    <div class="dashboard-grid">
+    <!-- 🎨 風格 B：三大卡片 -->
+    <div class="stats-grid">
       <div 
-        class="stat-card" 
-        :class="{ active: activeFilter === 'all' }"
+        class="stat-card all" 
+        :class="{ active: activeFilter === 'all' }" 
         @click="activeFilter = 'all'"
       >
-        <span class="stat-value">{{ stats.total }}</span>
-        <span class="stat-label">全部案件</span>
-      </div>
-      
-      <div 
-        class="stat-card orange" 
-        :class="{ active: activeFilter === 'processing' }"
-        @click="activeFilter = 'processing'"
-      >
-        <span class="stat-value">{{ stats.processing }}</span>
-        <span class="stat-label">⏳ 分析中</span>
+        <div class="stat-icon">📊</div>
+        <div class="stat-content">
+          <span class="stat-value">{{ stats.total }}</span>
+          <span class="stat-label">全部案件</span>
+        </div>
       </div>
 
       <div 
-        class="stat-card green" 
-        :class="{ active: activeFilter === 'completed' }"
+        class="stat-card processing" 
+        :class="{ active: activeFilter === 'processing' }" 
+        @click="activeFilter = 'processing'"
+      >
+        <div class="stat-icon">⏳</div>
+        <div class="stat-content">
+          <span class="stat-value">{{ stats.processing }}</span>
+          <span class="stat-label">分析中</span>
+        </div>
+      </div>
+
+      <div 
+        class="stat-card completed" 
+        :class="{ active: activeFilter === 'completed' }" 
         @click="activeFilter = 'completed'"
       >
-        <span class="stat-value">{{ stats.completed }}</span>
-        <span class="stat-label">✅ 已完成</span>
+        <div class="stat-icon">✅</div>
+        <div class="stat-content">
+          <span class="stat-value">{{ stats.completed }}</span>
+          <span class="stat-label">已完成</span>
+        </div>
       </div>
     </div>
 
-    <div v-if="isLoading" class="loading">
+    <!-- 載入中 -->
+    <div v-if="isLoading" class="loading-state">
       <div class="spinner"></div>
       <p>載入中...</p>
     </div>
 
-    <div v-else-if="filteredJobs.length > 0" class="job-list">
-      <div 
-        v-for="job in filteredJobs" 
-        :key="job.id" 
-        class="defense-job-card"
-        @click="goToDefenseDetail(job.id)"
-      >
-        <div class="card-header">
-          <div class="job-id-badge">
-            <span v-if="job.my_patent_drafting_number" class="id-text">
-              📁 {{ job.my_patent_drafting_number }}
-            </span>
-            <span v-else class="id-text uuid">
-              #{{ job.id.slice(0,8) }}
+    <!-- 案件列表 -->
+    <div v-else-if="filteredJobs.length > 0" class="jobs-section">
+      <div class="section-header">
+        <h3>📋 答辯案件列表</h3>
+        <span class="job-count">共 {{ filteredJobs.length }} 個案件</span>
+      </div>
+
+      <div class="job-list">
+        <div 
+          v-for="job in filteredJobs" 
+          :key="job.id" 
+          class="job-card"
+          @click="goToDefenseDetail(job.id)"
+        >
+          <div class="card-header">
+            <div class="job-id-badge">
+              <span v-if="job.my_patent_drafting_number">
+                📁 {{ job.my_patent_drafting_number }}
+              </span>
+              <span v-else>
+                #{{ job.id.slice(0, 8) }}
+              </span>
+            </div>
+            <div class="status-badge" :class="getStatusInfo(job).class">
+              <span class="status-icon">{{ getStatusInfo(job).icon }}</span>
+              <span class="status-text">{{ getStatusInfo(job).label }}</span>
+            </div>
+          </div>
+          
+          <h3 class="job-title">{{ getJobTitle(job) }}</h3>
+
+          <!-- 策略標籤 -->
+          <div 
+            class="strategy-badge" 
+            :style="{ 
+              background: `${getStrategyLabel(job).color}15`,
+              color: getStrategyLabel(job).color,
+              borderColor: `${getStrategyLabel(job).color}40`
+            }"
+          >
+            <span class="strategy-icon">{{ getStrategyLabel(job).icon }}</span>
+            <span class="strategy-label">{{ getStrategyLabel(job).label }}</span>
+          </div>
+
+          <div class="job-meta">
+            <span class="meta-item">
+              📅 {{ formatDate(job.created_at) }}
             </span>
           </div>
 
-          <div class="status-badge" :class="getStatusInfo(job).class">
-            {{ getStatusInfo(job).label }}
+          <div class="card-footer">
+            <button class="btn-view">
+              查看詳情 →
+            </button>
           </div>
-        </div>
-        
-        <h3 class="job-title">
-          {{ getJobTitle(job) }}
-        </h3>
-        
-        <div class="job-meta">
-          <span>📅 {{ formatDate(job.created_at) }}</span>
-          <span>🤖 {{ job.input_data?.strategy === 'conservative' ? '保守策略' : (job.input_data?.strategy === 'aggressive' ? '積極策略' : 'AI 推薦') }}</span>
-        </div>
-
-        <div class="card-footer">
-          <button class="btn-view">查看詳情 →</button>
         </div>
       </div>
     </div>
 
+    <!-- 空狀態 -->
     <div v-else class="empty-state">
-      <p>📭 尚無案件紀錄</p>
-      <button @click="startNewDefense" class="btn-primary">開始第一個答辯分析</button>
+      <div class="empty-icon">📭</div>
+      <h3>尚無答辯案件</h3>
+      <p>開始您的第一個 OA 答辯分析</p>
+      <button @click="startNewDefense" class="btn-start">
+        開始第一個答辯分析
+      </button>
     </div>
 
-    <!-- ✅ 修正：只保留 ServiceTips -->
+    <!-- ServiceTips -->
     <ServiceTips type="defense" />
   </div>
 </template>
 
 <style scoped>
-/* 保持原有樣式 */
 .workflow-container {
   max-width: 1400px;
   margin: 0 auto;
   padding: 24px;
 }
 
-.header {
+/* ========== 🎨 風格 B：漸層標題 ========== */
+.page-header {
   display: flex;
-  justify-content: space-between;
-  align-items: flex-end;
-  margin-bottom: 2rem;
+  align-items: center;
+  gap: 24px;
+  margin-bottom: 32px;
+  padding: 32px;
+  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+  border-radius: 16px;
+  box-shadow: 0 8px 24px rgba(102, 126, 234, 0.25);
 }
 
-.header h1 {
-  font-size: 24px;
+.header-icon {
+  font-size: 56px;
+  width: 88px;
+  height: 88px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: white;
+  border-radius: 16px;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
+}
+
+.header-content {
+  flex: 1;
+}
+
+.header-content h1 {
+  font-size: 28px;
   font-weight: 700;
-  color: #2c3e50;
-  margin-bottom: 8px;
+  color: white;
+  margin: 0 0 8px 0;
 }
 
 .subtitle {
-  color: #666;
-  font-size: 14px;
+  font-size: 15px;
+  color: rgba(255, 255, 255, 0.9);
+  margin: 0;
 }
 
 .header-actions {
@@ -233,173 +298,394 @@ const getStatusInfo = (job) => {
   gap: 12px;
 }
 
-.dashboard-grid {
+.btn-refresh {
+  padding: 12px 24px;
+  background: white;
+  border: 1px solid rgba(255, 255, 255, 0.3);
+  border-radius: 8px;
+  color: #667eea;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.3s;
+}
+
+.btn-refresh:hover {
+  background: #f8f9ff;
+  transform: translateY(-2px);
+}
+
+.btn-new {
+  padding: 12px 24px;
+  background: white;
+  border: none;
+  border-radius: 8px;
+  color: #667eea;
+  font-weight: 700;
+  cursor: pointer;
+  transition: all 0.3s;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
+}
+
+.btn-new:hover {
+  background: #f8f9ff;
+  transform: translateY(-2px);
+  box-shadow: 0 8px 16px rgba(0, 0, 0, 0.15);
+}
+
+/* ========== 🎨 風格 B：三大統計卡片 ========== */
+.stats-grid {
   display: grid;
   grid-template-columns: repeat(3, 1fr);
   gap: 20px;
-  margin-bottom: 30px;
+  margin-bottom: 32px;
 }
 
 .stat-card {
+  display: flex;
+  align-items: center;
+  gap: 20px;
+  padding: 24px;
   background: white;
-  padding: 20px;
   border-radius: 12px;
-  border: 1px solid #eee;
+  border: 2px solid #e2e8f0;
   cursor: pointer;
-  text-align: center;
-  transition: all 0.2s;
-  box-shadow: 0 2px 4px rgba(0,0,0,0.02);
+  transition: all 0.3s;
 }
-.stat-card:hover { transform: translateY(-2px); box-shadow: 0 4px 12px rgba(0,0,0,0.08); }
-.stat-card.active { border-color: #2196F3; background: #e3f2fd; }
-.stat-card.orange.active { border-color: #FF9800; background: #fff3e0; }
-.stat-card.green.active { border-color: #4CAF50; background: #e8f5e9; }
 
-.stat-value { font-size: 2rem; font-weight: bold; display: block; color: #2c3e50; }
-.stat-label { color: #666; font-size: 14px; }
+.stat-card:hover {
+  transform: translateY(-4px);
+  box-shadow: 0 8px 16px rgba(0, 0, 0, 0.1);
+}
 
-/* 列表卡片樣式 */
+.stat-card.active {
+  border-color: #667eea;
+  background: linear-gradient(135deg, #f8f9ff 0%, #f0f4ff 100%);
+  box-shadow: 0 4px 12px rgba(102, 126, 234, 0.2);
+}
+
+.stat-card.all .stat-icon {
+  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+}
+
+.stat-card.processing .stat-icon {
+  background: linear-gradient(135deg, #f59e0b 0%, #d97706 100%);
+}
+
+.stat-card.completed .stat-icon {
+  background: linear-gradient(135deg, #10b981 0%, #059669 100%);
+}
+
+.stat-icon {
+  font-size: 32px;
+  width: 64px;
+  height: 64px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 12px;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
+}
+
+.stat-content {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.stat-value {
+  font-size: 32px;
+  font-weight: 700;
+  color: #1e293b;
+}
+
+.stat-label {
+  font-size: 14px;
+  color: #64748b;
+  font-weight: 500;
+}
+
+/* ========== 載入狀態 ========== */
+.loading-state {
+  text-align: center;
+  padding: 80px 20px;
+  color: #94a3b8;
+}
+
+.spinner {
+  width: 48px;
+  height: 48px;
+  border: 4px solid #f3f4f6;
+  border-top: 4px solid #667eea;
+  border-radius: 50%;
+  animation: spin 1s linear infinite;
+  margin: 0 auto 16px;
+}
+
+@keyframes spin {
+  0% { transform: rotate(0deg); }
+  100% { transform: rotate(360deg); }
+}
+
+/* ========== 案件區域 ========== */
+.jobs-section {
+  background: white;
+  border-radius: 16px;
+  padding: 32px;
+  border: 2px solid #e2e8f0;
+  margin-bottom: 32px;
+}
+
+.section-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 24px;
+  padding-bottom: 16px;
+  border-bottom: 2px solid #f1f5f9;
+}
+
+.section-header h3 {
+  font-size: 20px;
+  font-weight: 700;
+  color: #1e293b;
+  margin: 0;
+}
+
+.job-count {
+  font-size: 14px;
+  color: #64748b;
+  font-weight: 600;
+  padding: 6px 16px;
+  background: #f8fafc;
+  border-radius: 12px;
+}
+
+/* ========== 案件列表 ========== */
 .job-list {
   display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));
+  grid-template-columns: repeat(auto-fill, minmax(350px, 1fr));
   gap: 20px;
 }
 
-.defense-job-card {
+.job-card {
   background: white;
+  border: 2px solid #e2e8f0;
   border-radius: 12px;
-  padding: 20px;
-  border: 1px solid #eee;
+  padding: 24px;
   cursor: pointer;
-  transition: all 0.2s;
-  position: relative;
+  transition: all 0.3s;
 }
-.defense-job-card:hover {
-  box-shadow: 0 4px 12px rgba(0,0,0,0.08);
-  border-color: #2196F3;
+
+.job-card:hover {
+  border-color: #667eea;
+  box-shadow: 0 8px 16px rgba(102, 126, 234, 0.15);
+  transform: translateY(-4px);
 }
 
 .card-header {
   display: flex;
   justify-content: space-between;
   align-items: center;
-  margin-bottom: 12px;
-}
-.job-id { 
-  font-family: monospace; 
-  color: #888; 
-  font-size: 12px;
-  background: #f5f5f5;
-  padding: 2px 6px;
-  border-radius: 4px;
-}
-
-.status-badge {
-  padding: 4px 10px;
-  border-radius: 12px;
-  font-size: 0.8rem;
-  font-weight: 600;
-}
-.status-success { background: #e8f5e9; color: #2e7d32; }
-.status-warning { background: #fff3e0; color: #f57c00; }
-.status-error { background: #ffebee; color: #c62828; }
-.status-info { background: #e3f2fd; color: #1565c0; }
-.status-default { background: #f5f5f5; color: #666; }
-
-.job-title { 
-  margin: 0 0 12px 0; 
-  font-size: 1.1rem; 
-  color: #333; 
-  line-height: 1.4;
-}
-
-.job-meta { 
-  display: flex; 
-  flex-direction: column;
-  gap: 4px; 
-  font-size: 0.85rem; 
-  color: #666; 
-  margin-bottom: 16px; 
-}
-
-.card-footer { text-align: right; }
-.btn-view { background: none; border: none; color: #2196F3; font-weight: 600; cursor: pointer; }
-
-.btn-new { 
-  background: linear-gradient(135deg, #2196F3, #1976D2); 
-  color: white; 
-  border: none; 
-  padding: 10px 20px; 
-  border-radius: 8px; 
-  cursor: pointer; 
-  font-weight: 500;
-}
-.btn-new:hover { background: linear-gradient(135deg, #1976D2, #1565C0); }
-
-.btn-secondary { 
-  background: white; 
-  border: 1px solid #ddd; 
-  padding: 10px 20px; 
-  border-radius: 8px; 
-  cursor: pointer; 
-  color: #666;
-}
-.btn-secondary:hover { background: #f5f5f5; }
-
-.btn-primary {
-  background: #2196F3;
-  color: white;
-  border: none;
-  padding: 10px 20px;
-  border-radius: 8px;
-  cursor: pointer;
-}
-
-/* 載入與空狀態 */
-.loading, .empty-state { 
-  text-align: center; 
-  padding: 60px 0; 
-  color: #666; 
-}
-
-.spinner { 
-  border: 3px solid #f3f3f3; 
-  border-top: 3px solid #3498db; 
-  border-radius: 50%; 
-  width: 30px; 
-  height: 30px; 
-  animation: spin 1s linear infinite; 
-  margin: 0 auto 10px; 
-}
-@keyframes spin { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); } }
-
-/* RWD */
-@media (max-width: 768px) {
-  .dashboard-grid {
-    grid-template-columns: 1fr;
-  }
-  .job-list {
-    grid-template-columns: 1fr;
-  }
-  .header {
-    flex-direction: column;
-    align-items: flex-start;
-    gap: 16px;
-  }
+  margin-bottom: 16px;
 }
 
 .job-id-badge {
-  background: #f0f4f8;
-  padding: 4px 10px;
+  font-size: 12px;
+  font-family: 'Monaco', 'Courier New', monospace;
+  color: #667eea;
+  padding: 6px 12px;
+  background: #f0f4ff;
   border-radius: 6px;
-  font-family: 'Courier New', monospace;
-  font-weight: 600;
-  color: #2c3e50;
-  border: 1px solid #dae1e7;
+  font-weight: 700;
 }
 
-.id-text.uuid {
-  color: #999;
-  font-weight: normal;
+.status-badge {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 12px;
+  border-radius: 12px;
+  font-size: 13px;
+  font-weight: 600;
+}
+
+.status-badge.status-success {
+  background: #d1fae5;
+  color: #065f46;
+}
+
+.status-badge.status-warning {
+  background: #fef3c7;
+  color: #92400e;
+}
+
+.status-badge.status-error {
+  background: #fee2e2;
+  color: #991b1b;
+}
+
+.status-badge.status-info {
+  background: #dbeafe;
+  color: #1e40af;
+}
+
+.status-badge.status-default {
+  background: #f1f5f9;
+  color: #475569;
+}
+
+.status-icon {
+  font-size: 14px;
+}
+
+.job-title {
+  font-size: 18px;
+  font-weight: 700;
+  color: #1e293b;
+  margin: 0 0 12px 0;
+  line-height: 1.4;
+}
+
+/* ========== 🎨 策略標籤（新增） ========== */
+.strategy-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 16px;
+  border-radius: 8px;
+  border: 1px solid;
+  font-size: 13px;
+  font-weight: 700;
+  margin-bottom: 12px;
+}
+
+.strategy-icon {
+  font-size: 16px;
+}
+
+.strategy-label {
+  letter-spacing: 0.5px;
+}
+
+.job-meta {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin-bottom: 16px;
+  padding-top: 16px;
+  border-top: 1px solid #f1f5f9;
+}
+
+.meta-item {
+  font-size: 13px;
+  color: #64748b;
+}
+
+.card-footer {
+  text-align: right;
+}
+
+.btn-view {
+  background: none;
+  border: none;
+  color: #667eea;
+  font-weight: 700;
+  font-size: 14px;
+  cursor: pointer;
+  transition: all 0.3s;
+}
+
+.btn-view:hover {
+  color: #5568d3;
+}
+
+/* ========== 空狀態 ========== */
+.empty-state {
+  text-align: center;
+  padding: 80px 20px;
+  background: white;
+  border-radius: 16px;
+  border: 2px dashed #e2e8f0;
+  margin-bottom: 32px;
+}
+
+.empty-icon {
+  font-size: 80px;
+  margin-bottom: 24px;
+  opacity: 0.5;
+}
+
+.empty-state h3 {
+  font-size: 24px;
+  font-weight: 700;
+  color: #1e293b;
+  margin: 0 0 12px 0;
+}
+
+.empty-state p {
+  font-size: 15px;
+  color: #64748b;
+  margin: 0 0 24px 0;
+}
+
+.btn-start {
+  padding: 16px 32px;
+  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+  color: white;
+  border: none;
+  border-radius: 12px;
+  font-size: 16px;
+  font-weight: 700;
+  cursor: pointer;
+  transition: all 0.3s;
+  box-shadow: 0 4px 12px rgba(102, 126, 234, 0.3);
+}
+
+.btn-start:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 8px 16px rgba(102, 126, 234, 0.4);
+}
+
+/* ========== 響應式 ========== */
+@media (max-width: 1200px) {
+  .stats-grid {
+    grid-template-columns: repeat(2, 1fr);
+  }
+
+  .job-list {
+    grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));
+  }
+}
+
+@media (max-width: 768px) {
+  .page-header {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 20px;
+  }
+
+  .header-actions {
+    width: 100%;
+    flex-direction: column;
+  }
+
+  .btn-refresh,
+  .btn-new {
+    width: 100%;
+  }
+
+  .stats-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .job-list {
+    grid-template-columns: 1fr;
+  }
+
+  .section-header {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 12px;
+  }
 }
 </style>

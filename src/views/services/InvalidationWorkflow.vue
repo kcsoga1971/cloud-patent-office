@@ -25,7 +25,7 @@ const loadJobs = async () => {
       .from('saas_jobs')
       .select('*')
       .eq('user_id', userStore.user.id)
-      .eq('job_type', 'patent_invalidation') // 🎯 鎖定舉發案件
+      .eq('job_type', 'patent_invalidation')
       .order('updated_at', { ascending: false })
     
     if (error) throw error
@@ -64,124 +64,591 @@ const startNewJob = () => {
 }
 
 const getStatusInfo = (job) => {
-  if (job.status === 'completed') return { label: '✅ 舉發分析完成', class: 'status-success' }
-  if (job.status === 'pending') return { label: '⏳ 比對中', class: 'status-warning' }
-  if (job.status === 'failed') return { label: '❌ 失敗', class: 'status-error' }
-  return { label: '📝 處理中', class: 'status-default' }
+  if (job.status === 'completed') return { label: '已完成', icon: '✅', class: 'status-success' }
+  if (job.status === 'pending') return { label: '分析中', icon: '⏳', class: 'status-warning' }
+  if (job.status === 'failed') return { label: '失敗', icon: '❌', class: 'status-error' }
+  return { label: '處理中', icon: '📝', class: 'status-default' }
 }
 
 const getJobTitle = (job) => {
-  const target = job.input_data?.target_patent || '未命名'
-  const evidence = job.input_data?.evidence_patent || '未知證據'
-  return `舉發：${target} vs ${evidence}`
+  const input = job.input_data || {}
+  const target = input.target_patent || '未命名專利'
+  const evidenceCount = input.evidence_patents?.length || 0
+  return `${target} (${evidenceCount} 篇證據)`
+}
+
+const getJobDescription = (job) => {
+  const result = job.result_data
+  if (result && result.conclusion) {
+    const probability = ((result.conclusion.success_probability || 0) * 100).toFixed(0)
+    return `舉發成功機率：${probability}%`
+  }
+  return '分析中...'
 }
 </script>
 
 <template>
   <div class="workflow-container">
-    <div class="header">
+    <!-- 頁面標題 -->
+    <div class="page-header">
       <div class="header-left">
-        <h1>⚔️ 專利舉發分析 (Invalidation)</h1>
-        <p class="subtitle">自動化生成專利無效/舉發理由書與證據比對表 (Claim Chart)</p>
+        <div class="header-icon">⚔️</div>
+        <div class="header-content">
+          <h1>專利舉發分析 (Invalidation)</h1>
+          <p class="subtitle">自動化生成專利無效/舉發理由書與證據比對表 (Claim Chart)</p>
+        </div>
       </div>
       <div class="header-actions">
-        <button @click="loadJobs" class="btn-secondary">🔄 重新整理</button>
-        <button @click="startNewJob" class="btn-new">➕ 新增舉發案</button>
+        <button @click="loadJobs" class="btn-refresh">
+          🔄 重新整理
+        </button>
+        <button @click="startNewJob" class="btn-new">
+          ➕ 新增舉發案
+        </button>
       </div>
     </div>
 
-    <div class="dashboard-grid">
-      <div class="stat-card" :class="{ active: activeFilter === 'all' }" @click="activeFilter = 'all'">
-        <span class="stat-value">{{ stats.total }}</span>
-        <span class="stat-label">全部案件</span>
+    <!-- 統計卡片 -->
+    <div class="stats-grid">
+      <div 
+        class="stat-card total" 
+        :class="{ active: activeFilter === 'all' }" 
+        @click="activeFilter = 'all'"
+      >
+        <div class="stat-icon">📊</div>
+        <div class="stat-content">
+          <span class="stat-value">{{ stats.total }}</span>
+          <span class="stat-label">全部案件</span>
+        </div>
       </div>
-      <div class="stat-card orange" :class="{ active: activeFilter === 'processing' }" @click="activeFilter = 'processing'">
-        <span class="stat-value">{{ stats.processing }}</span>
-        <span class="stat-label">⏳ 分析中</span>
+
+      <div 
+        class="stat-card processing" 
+        :class="{ active: activeFilter === 'processing' }" 
+        @click="activeFilter = 'processing'"
+      >
+        <div class="stat-icon">⏳</div>
+        <div class="stat-content">
+          <span class="stat-value">{{ stats.processing }}</span>
+          <span class="stat-label">分析中</span>
+        </div>
       </div>
-      <div class="stat-card green" :class="{ active: activeFilter === 'completed' }" @click="activeFilter = 'completed'">
-        <span class="stat-value">{{ stats.completed }}</span>
-        <span class="stat-label">✅ 已完成</span>
+
+      <div 
+        class="stat-card completed" 
+        :class="{ active: activeFilter === 'completed' }" 
+        @click="activeFilter = 'completed'"
+      >
+        <div class="stat-icon">✅</div>
+        <div class="stat-content">
+          <span class="stat-value">{{ stats.completed }}</span>
+          <span class="stat-label">已完成</span>
+        </div>
       </div>
     </div>
 
-    <div v-if="isLoading" class="loading">
+    <!-- 載入中 -->
+    <div v-if="isLoading" class="loading-state">
       <div class="spinner"></div>
       <p>載入中...</p>
     </div>
 
-    <div v-else-if="filteredJobs.length > 0" class="job-list">
-      <div v-for="job in filteredJobs" :key="job.id" class="job-card" @click="goToDetail(job.id)">
-        <div class="card-header">
-          <div class="job-id-badge">
-            <span class="uuid">#{{ job.id.slice(0,8) }}</span>
-          </div>
-          <div class="status-badge" :class="getStatusInfo(job).class">
-            {{ getStatusInfo(job).label }}
-          </div>
-        </div>
-        
-        <h3 class="job-title">{{ getJobTitle(job) }}</h3>
-        
-        <div class="job-meta">
-          <span>📅 {{ formatDate(job.created_at) }}</span>
-          <span v-if="job.result_data?.conclusion">
-            🎯 成功率預估：{{ job.result_data.conclusion.success_rate || '評估中' }}
-          </span>
-        </div>
+    <!-- 案件列表 -->
+    <div v-else-if="filteredJobs.length > 0" class="jobs-section">
+      <div class="section-header">
+        <h3>📋 案件列表</h3>
+        <span class="job-count">共 {{ filteredJobs.length }} 個案件</span>
+      </div>
 
-        <div class="card-footer">
-          <button class="btn-view">查看理由書 →</button>
+      <div class="job-list">
+        <div 
+          v-for="job in filteredJobs" 
+          :key="job.id" 
+          class="job-card"
+          @click="goToDetail(job.id)"
+        >
+          <div class="card-header">
+            <div class="job-id-badge">
+              #{{ job.id.slice(0, 8) }}
+            </div>
+            <div class="status-badge" :class="getStatusInfo(job).class">
+              <span class="status-icon">{{ getStatusInfo(job).icon }}</span>
+              <span class="status-text">{{ getStatusInfo(job).label }}</span>
+            </div>
+          </div>
+          
+          <h3 class="job-title">{{ getJobTitle(job) }}</h3>
+          
+          <div class="job-description">
+            {{ getJobDescription(job) }}
+          </div>
+
+          <div class="job-meta">
+            <span class="meta-item">
+              📅 {{ formatDate(job.created_at) }}
+            </span>
+            <span v-if="job.updated_at !== job.created_at" class="meta-item">
+              🔄 {{ formatDate(job.updated_at) }}
+            </span>
+          </div>
+
+          <div class="card-footer">
+            <button class="btn-view">
+              查看理由書 →
+            </button>
+          </div>
         </div>
       </div>
     </div>
 
+    <!-- 空狀態 -->
     <div v-else class="empty-state">
-      <p>📭 尚無舉發分析案件</p>
-      <button @click="startNewJob" class="btn-primary">開始第一個分析</button>
+      <div class="empty-icon">📭</div>
+      <h3>尚無舉發分析案件</h3>
+      <p>開始您的第一個專利舉發分析</p>
+      <button @click="startNewJob" class="btn-start">
+        開始第一個分析
+      </button>
     </div>
 
-    <div class="invalidation-page">    
-      <ServiceTips type="invalidation" />
-      <div v-if="showConfirmModal" class="modal-overlay">
-        </div>
-    </div>    
-
+    <!-- ServiceTips -->
+    <ServiceTips type="invalidation" />
   </div>
 </template>
 
 <style scoped>
-/* 樣式同前，保持一致性 */
-.workflow-container { padding: 2rem; max-width: 1200px; margin: 0 auto; }
-.header { display: flex; justify-content: space-between; align-items: flex-end; margin-bottom: 2rem; }
-.header h1 { font-size: 24px; font-weight: 700; color: #2c3e50; margin: 0 0 8px 0; }
-.subtitle { color: #666; font-size: 14px; margin: 0; }
-.header-actions { display: flex; gap: 12px; }
-.dashboard-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 20px; margin-bottom: 30px; }
-.stat-card { background: white; padding: 20px; border-radius: 12px; border: 1px solid #eee; cursor: pointer; text-align: center; transition: all 0.2s; }
-.stat-card:hover { transform: translateY(-2px); box-shadow: 0 4px 12px rgba(0,0,0,0.08); }
-.stat-card.active { border-color: #2196F3; background: #e3f2fd; }
-.stat-card.orange.active { border-color: #FF9800; background: #fff3e0; }
-.stat-card.green.active { border-color: #4CAF50; background: #e8f5e9; }
-.stat-value { font-size: 2rem; font-weight: bold; color: #2c3e50; }
-.stat-label { color: #666; }
-.job-list { display: grid; grid-template-columns: repeat(auto-fill, minmax(320px, 1fr)); gap: 20px; }
-.job-card { background: white; border-radius: 12px; padding: 20px; border: 1px solid #eee; cursor: pointer; transition: all 0.2s; }
-.job-card:hover { border-color: #2196F3; box-shadow: 0 4px 12px rgba(0,0,0,0.08); }
-.card-header { display: flex; justify-content: space-between; margin-bottom: 12px; }
-.job-id-badge { background: #f0f4f8; padding: 4px 8px; border-radius: 6px; font-size: 12px; font-family: monospace; color: #555; }
-.status-badge { padding: 4px 10px; border-radius: 12px; font-size: 0.8rem; font-weight: 600; }
-.status-success { background: #e8f5e9; color: #2e7d32; }
-.status-warning { background: #fff3e0; color: #f57c00; }
-.status-error { background: #ffebee; color: #c62828; }
-.status-default { background: #f5f5f5; color: #666; }
-.job-title { margin: 0 0 12px 0; font-size: 1.1rem; color: #333; line-height: 1.4; }
-.job-meta { display: flex; flex-direction: column; gap: 6px; font-size: 0.9rem; color: #666; margin-bottom: 16px; }
-.card-footer { text-align: right; }
-.btn-view { background: none; border: none; color: #2196F3; font-weight: 600; cursor: pointer; }
-.btn-new { background: #2196F3; color: white; border: none; padding: 10px 20px; border-radius: 8px; cursor: pointer; }
-.btn-secondary { background: white; border: 1px solid #ddd; padding: 10px 20px; border-radius: 8px; cursor: pointer; }
-.loading, .empty-state { text-align: center; padding: 60px 0; color: #666; }
-.spinner { border: 3px solid #f3f3f3; border-top: 3px solid #3498db; border-radius: 50%; width: 30px; height: 30px; animation: spin 1s linear infinite; margin: 0 auto 10px; }
-@keyframes spin { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); } }
+.workflow-container {
+  max-width: 1400px;
+  margin: 0 auto;
+  padding: 24px;
+}
+
+/* 頁面標題 */
+.page-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 32px;
+  padding: 32px;
+  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+  border-radius: 16px;
+  box-shadow: 0 8px 24px rgba(102, 126, 234, 0.25);
+}
+
+.header-left {
+  display: flex;
+  align-items: center;
+  gap: 24px;
+}
+
+.header-icon {
+  font-size: 56px;
+  width: 88px;
+  height: 88px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: white;
+  border-radius: 16px;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
+}
+
+.header-content h1 {
+  font-size: 28px;
+  font-weight: 700;
+  color: white;
+  margin: 0 0 8px 0;
+}
+
+.subtitle {
+  font-size: 15px;
+  color: rgba(255, 255, 255, 0.9);
+  margin: 0;
+}
+
+.header-actions {
+  display: flex;
+  gap: 12px;
+}
+
+.btn-refresh {
+  padding: 12px 24px;
+  background: white;
+  border: 1px solid rgba(255, 255, 255, 0.3);
+  border-radius: 8px;
+  color: #667eea;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.3s;
+}
+
+.btn-refresh:hover {
+  background: #f8f9ff;
+  transform: translateY(-2px);
+}
+
+.btn-new {
+  padding: 12px 24px;
+  background: white;
+  border: none;
+  border-radius: 8px;
+  color: #667eea;
+  font-weight: 700;
+  cursor: pointer;
+  transition: all 0.3s;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
+}
+
+.btn-new:hover {
+  background: #f8f9ff;
+  transform: translateY(-2px);
+  box-shadow: 0 8px 16px rgba(0, 0, 0, 0.15);
+}
+
+/* 統計卡片 */
+.stats-grid {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 20px;
+  margin-bottom: 32px;
+}
+
+.stat-card {
+  display: flex;
+  align-items: center;
+  gap: 20px;
+  padding: 24px;
+  background: white;
+  border-radius: 12px;
+  border: 2px solid #e2e8f0;
+  cursor: pointer;
+  transition: all 0.3s;
+}
+
+.stat-card:hover {
+  transform: translateY(-4px);
+  box-shadow: 0 8px 16px rgba(0, 0, 0, 0.1);
+}
+
+.stat-card.active {
+  border-color: #667eea;
+  background: linear-gradient(135deg, #f8f9ff 0%, #f0f4ff 100%);
+  box-shadow: 0 4px 12px rgba(102, 126, 234, 0.2);
+}
+
+.stat-card.total .stat-icon {
+  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+}
+
+.stat-card.processing .stat-icon {
+  background: linear-gradient(135deg, #f59e0b 0%, #d97706 100%);
+}
+
+.stat-card.completed .stat-icon {
+  background: linear-gradient(135deg, #10b981 0%, #059669 100%);
+}
+
+.stat-icon {
+  font-size: 32px;
+  width: 64px;
+  height: 64px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 12px;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
+}
+
+.stat-content {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.stat-value {
+  font-size: 32px;
+  font-weight: 700;
+  color: #1e293b;
+}
+
+.stat-label {
+  font-size: 14px;
+  color: #64748b;
+  font-weight: 500;
+}
+
+/* 載入狀態 */
+.loading-state {
+  text-align: center;
+  padding: 80px 20px;
+  color: #94a3b8;
+}
+
+.spinner {
+  width: 48px;
+  height: 48px;
+  border: 4px solid #f3f4f6;
+  border-top: 4px solid #667eea;
+  border-radius: 50%;
+  animation: spin 1s linear infinite;
+  margin: 0 auto 16px;
+}
+
+@keyframes spin {
+  0% { transform: rotate(0deg); }
+  100% { transform: rotate(360deg); }
+}
+
+/* 案件區域 */
+.jobs-section {
+  background: white;
+  border-radius: 16px;
+  padding: 32px;
+  border: 2px solid #e2e8f0;
+  margin-bottom: 32px;
+}
+
+.section-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 24px;
+  padding-bottom: 16px;
+  border-bottom: 2px solid #f1f5f9;
+}
+
+.section-header h3 {
+  font-size: 20px;
+  font-weight: 700;
+  color: #1e293b;
+  margin: 0;
+}
+
+.job-count {
+  font-size: 14px;
+  color: #64748b;
+  font-weight: 600;
+  padding: 6px 16px;
+  background: #f8fafc;
+  border-radius: 12px;
+}
+
+/* 案件列表 */
+.job-list {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(350px, 1fr));
+  gap: 20px;
+}
+
+.job-card {
+  background: white;
+  border: 2px solid #e2e8f0;
+  border-radius: 12px;
+  padding: 24px;
+  cursor: pointer;
+  transition: all 0.3s;
+}
+
+.job-card:hover {
+  border-color: #667eea;
+  box-shadow: 0 8px 16px rgba(102, 126, 234, 0.15);
+  transform: translateY(-4px);
+}
+
+.card-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 16px;
+}
+
+.job-id-badge {
+  font-size: 12px;
+  font-family: 'Monaco', 'Courier New', monospace;
+  color: #667eea;
+  padding: 6px 12px;
+  background: #f0f4ff;
+  border-radius: 6px;
+  font-weight: 700;
+}
+
+.status-badge {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 12px;
+  border-radius: 12px;
+  font-size: 13px;
+  font-weight: 600;
+}
+
+.status-badge.status-success {
+  background: #d1fae5;
+  color: #065f46;
+}
+
+.status-badge.status-warning {
+  background: #fef3c7;
+  color: #92400e;
+}
+
+.status-badge.status-error {
+  background: #fee2e2;
+  color: #991b1b;
+}
+
+.status-badge.status-default {
+  background: #f1f5f9;
+  color: #475569;
+}
+
+.status-icon {
+  font-size: 14px;
+}
+
+.job-title {
+  font-size: 18px;
+  font-weight: 700;
+  color: #1e293b;
+  margin: 0 0 12px 0;
+  line-height: 1.4;
+}
+
+.job-description {
+  font-size: 14px;
+  color: #10b981;
+  font-weight: 600;
+  margin-bottom: 16px;
+  padding: 12px;
+  background: #f0fdf4;
+  border-radius: 8px;
+  border: 1px solid #d1fae5;
+}
+
+.job-meta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px;
+  margin-bottom: 16px;
+  padding-top: 16px;
+  border-top: 1px solid #f1f5f9;
+}
+
+.meta-item {
+  font-size: 13px;
+  color: #64748b;
+}
+
+.card-footer {
+  text-align: right;
+}
+
+.btn-view {
+  background: none;
+  border: none;
+  color: #667eea;
+  font-weight: 700;
+  font-size: 14px;
+  cursor: pointer;
+  transition: all 0.3s;
+}
+
+.btn-view:hover {
+  color: #5568d3;
+}
+
+/* 空狀態 */
+.empty-state {
+  text-align: center;
+  padding: 80px 20px;
+  background: white;
+  border-radius: 16px;
+  border: 2px dashed #e2e8f0;
+  margin-bottom: 32px;
+}
+
+.empty-icon {
+  font-size: 80px;
+  margin-bottom: 24px;
+  opacity: 0.5;
+}
+
+.empty-state h3 {
+  font-size: 24px;
+  font-weight: 700;
+  color: #1e293b;
+  margin: 0 0 12px 0;
+}
+
+.empty-state p {
+  font-size: 15px;
+  color: #64748b;
+  margin: 0 0 24px 0;
+}
+
+.btn-start {
+  padding: 16px 32px;
+  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+  color: white;
+  border: none;
+  border-radius: 12px;
+  font-size: 16px;
+  font-weight: 700;
+  cursor: pointer;
+  transition: all 0.3s;
+  box-shadow: 0 4px 12px rgba(102, 126, 234, 0.3);
+}
+
+.btn-start:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 8px 16px rgba(102, 126, 234, 0.4);
+}
+
+/* 響應式 */
+@media (max-width: 1200px) {
+  .stats-grid {
+    grid-template-columns: repeat(2, 1fr);
+  }
+
+  .job-list {
+    grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));
+  }
+}
+
+@media (max-width: 768px) {
+  .page-header {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 20px;
+  }
+
+  .header-left {
+    flex-direction: column;
+    align-items: flex-start;
+  }
+
+  .header-actions {
+    width: 100%;
+    flex-direction: column;
+  }
+
+  .btn-refresh,
+  .btn-new {
+    width: 100%;
+  }
+
+  .stats-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .job-list {
+    grid-template-columns: 1fr;
+  }
+
+  .section-header {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 12px;
+  }
+}
 </style>
