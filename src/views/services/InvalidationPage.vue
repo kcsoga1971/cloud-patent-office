@@ -85,7 +85,7 @@ const canProceed = computed(() => {
 })
 
 const canStartSearch = computed(() => {
-  return targetPatentNumber.value.trim() !== '' && claimsText.value.trim().length >= 50
+  return targetPatentNumber.value.trim() !== ''
 })
 
 // ========== 證據專利：專利號清單 ==========
@@ -417,11 +417,6 @@ const startSearch = async () => {
     alert(`點數不足，檢索需要 ${SEARCH_COST} 點`)
     return
   }
-  if (!claimsText.value.trim()) {
-    alert('請輸入系爭專利的請求項文字')
-    return
-  }
-  
   if (!confirm(`確定要開始檢索嗎？將扣除 ${SEARCH_COST} 點`)) return
   
   // ✅ 啟動檢索 UI
@@ -1280,45 +1275,47 @@ onUnmounted(() => {
           </div>
         </div>
 
-        <!-- Claims + Domain Hints 輸入區 -->
+        <!-- 進階選項（可收合） -->
         <div v-if="searchResults.length === 0 && !isSearching" class="engine-input-section">
-          <div class="engine-form-group">
-            <label class="engine-label">
-              📝 請求項文字 <span class="engine-required">*</span>
-            </label>
-            <textarea
-              v-model="claimsText"
-              placeholder="請貼上系爭專利的請求項全文（至少 50 字）...&#10;&#10;例如：&#10;1. 一種顯色光阻剝離液組成物，其包含：(a) 選自由四甲基氫氧化銨（TMAH）及氫氧化鉀（KOH）所組成群組之鹼性化合物..."
-              class="engine-textarea"
-              rows="6"
-            ></textarea>
-            <div class="engine-char-info">
-              <span :class="{ 'text-red-500': claimsText.length > 0 && claimsText.length < 50 }">
-                {{ claimsText.length }} 字{{ claimsText.length > 0 && claimsText.length < 50 ? '（至少需 50 字）' : '' }}
-              </span>
-            </div>
-          </div>
+          <details class="engine-advanced">
+            <summary class="engine-advanced-toggle">
+              ⚙️ 進階選項（選填 — 系統會自動從專利說明書擷取所需資訊）
+            </summary>
+            <div class="engine-advanced-body">
+              <div class="engine-form-group">
+                <label class="engine-label">
+                  📝 請求項文字 <span class="engine-hint">（選填，留空則自動擷取）</span>
+                </label>
+                <textarea
+                  v-model="claimsText"
+                  placeholder="如需自訂，可貼上系爭專利的請求項全文..."
+                  class="engine-textarea"
+                  rows="4"
+                ></textarea>
+              </div>
 
-          <div class="engine-form-group">
-            <label class="engine-label">
-              💡 行業關鍵字提示 <span class="engine-hint">（選填，大幅提升精準度）</span>
-            </label>
-            <input
-              v-model="domainHints"
-              type="text"
-              placeholder="例如：color resist stripping, TFT-LCD, photoresist（用逗號分隔）"
-              class="engine-input"
-            />
-            <p class="engine-help">Claims 通常使用抽象語言，提供行業關鍵字可讓 AI 找到更精確的證據</p>
-          </div>
+              <div class="engine-form-group">
+                <label class="engine-label">
+                  💡 行業關鍵字提示 <span class="engine-hint">（選填，可提升精準度）</span>
+                </label>
+                <input
+                  v-model="domainHints"
+                  type="text"
+                  placeholder="例如：color resist stripping, TFT-LCD, photoresist（用逗號分隔）"
+                  class="engine-input"
+                />
+                <p class="engine-help">Claims 通常使用抽象語言，提供行業關鍵字可讓 AI 找到更精確的證據</p>
+              </div>
 
-          <div class="engine-form-row">
-            <div class="engine-form-group engine-half">
-              <label class="engine-label">📅 申請日截止 <span class="engine-hint">（選填）</span></label>
-              <input v-model="filingDateCutoff" type="date" class="engine-input" />
-              <p class="engine-help">只搜尋此日期前的專利</p>
+              <div class="engine-form-row">
+                <div class="engine-form-group engine-half">
+                  <label class="engine-label">📅 申請日截止 <span class="engine-hint">（選填，留空自動判斷）</span></label>
+                  <input v-model="filingDateCutoff" type="date" class="engine-input" />
+                  <p class="engine-help">只搜尋此日期前的專利</p>
+                </div>
+              </div>
             </div>
-          </div>
+          </details>
         </div>
         
         <!-- 檢索按鈕 -->
@@ -1335,7 +1332,7 @@ onUnmounted(() => {
           >
             <span v-if="isSearching">⏳ 檢索中...</span>
             <span v-else-if="insufficientFundsForSearch">❌ 點數不足</span>
-            <span v-else-if="!canStartSearch">📤 請先輸入專利號 + 請求項文字</span>
+            <span v-else-if="!canStartSearch">📤 請先輸入系爭專利號</span>
             <span v-else>🔍 開始 AI 檢索（{{ SEARCH_COST }} 點）</span>
           </button>
         </div>
@@ -1644,6 +1641,31 @@ onUnmounted(() => {
   font-size: 13px;
   color: #6b7280;
   margin: 6px 0 0;
+}
+
+.engine-advanced {
+  border: 1px solid #e2e8f0;
+  border-radius: 8px;
+  overflow: hidden;
+}
+
+.engine-advanced-toggle {
+  padding: 12px 16px;
+  cursor: pointer;
+  font-weight: 600;
+  font-size: 14px;
+  color: #64748b;
+  background: #f8fafc;
+  user-select: none;
+}
+
+.engine-advanced-toggle:hover {
+  background: #f1f5f9;
+}
+
+.engine-advanced-body {
+  padding: 16px;
+  border-top: 1px solid #e2e8f0;
 }
 
 .engine-form-row {
