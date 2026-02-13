@@ -6,6 +6,7 @@ import { supabase } from '../../supabase'
 import { useUserStore } from '../../stores/user'
 import InvalidationResultPanel from './InvalidationResultPanel.vue'
 import ServiceTips from '../../components/ServiceTips.vue'
+import PatentEvidenceSearch from '../../components/PatentEvidenceSearch.vue'
 
 const router = useRouter()
 const route = useRoute()
@@ -36,9 +37,15 @@ const evidenceSourceMethod = ref('search') // 'search' | 'patent_numbers'
 // ========== 步驟 3A：證據專利號清單 ==========
 const evidencePatentNumbers = ref([{ patent_number: '' }])
 
+// ========== 步驟 2.5：Claims + Domain Hints ==========
+const claimsText = ref('')
+const domainHints = ref('')
+const filingDateCutoff = ref('')
+
 // ========== 步驟 3B：AI 檢索結果 ==========
 const searchResults = ref([])
 const selectedEvidences = ref([])
+const engineWorkflowId = ref(null)
 
 // Computed
 const insufficientFundsForSearch = computed(() => {
@@ -78,7 +85,7 @@ const canProceed = computed(() => {
 })
 
 const canStartSearch = computed(() => {
-  return targetPatentNumber.value.trim() !== ''
+  return targetPatentNumber.value.trim() !== '' && claimsText.value.trim().length >= 50
 })
 
 // ========== 證據專利：專利號清單 ==========
@@ -398,7 +405,9 @@ const updateSearchStep = (step, description, progress) => {
   console.log(`🔄 步驟 ${step}/5: ${description} (${progress}%)`)
 }
 
-// ========== 修改 startSearch() ==========
+// ========== 修改 startSearch() — 串接 Patent Invalidation Engine ==========
+const PATENT_ENGINE_URL = import.meta.env.VITE_PATENT_ENGINE_URL || 'https://patent-invalidation-search.twcio.com'
+
 const startSearch = async () => {
   if (!userStore.user) {
     alert('請先登入')
@@ -406,6 +415,10 @@ const startSearch = async () => {
   }
   if (insufficientFundsForSearch.value) {
     alert(`點數不足，檢索需要 ${SEARCH_COST} 點`)
+    return
+  }
+  if (!claimsText.value.trim()) {
+    alert('請輸入系爭專利的請求項文字')
     return
   }
   
@@ -460,7 +473,10 @@ const startSearch = async () => {
         input_data: {
           target_patent: {
             patent_number: targetPatentNumber.value.trim()
-          }
+          },
+          claims_text: claimsText.value.trim(),
+          domain_hints: domainHints.value.trim(),
+          filing_date_cutoff: filingDateCutoff.value || null
         }
       })
       .select()
@@ -490,84 +506,54 @@ const startSearch = async () => {
     analysisId = analysis.id
     console.log('✅ 建立分析記錄成功, analysis_id:', analysisId)
 
-    // D. 步驟 1: 下載系爭專利
-    updateSearchStep(3, '正在下載系爭專利...', 40)
+    // D. 呼叫 Patent Invalidation Engine API（取代 n8n）
+    updateSearchStep(3, '正在啟動 AI 智慧檢索引擎...', 40)
     
-    const downloadUrl = import.meta.env.VITE_N8N_WEBHOOK_INVALIDATION_DOWNLOAD_URL
-    if (!downloadUrl) {
-      throw new Error('❌ Download Webhook URL 未設定')
+    // 解析 domain hints
+    const hints = domainHints.value
+      .split(/[,，、\n]/)
+      .map(s => s.trim())
+      .filter(Boolean)
+
+    const enginePayload = {
+      patent_id: targetPatentNumber.value.trim(),
+      claims_text: claimsText.value.trim(),
+      target_count: 30,
+      max_rounds: 5,
+      ...(filingDateCutoff.value && { filing_date_cutoff: filingDateCutoff.value }),
+      ...(hints.length > 0 && {
+        patent_context: { domain_hints: hints }
+      })
     }
 
-    console.log('🚀 步驟 1/2: 下載系爭專利')
-    console.log('   URL:', downloadUrl)
-    
-    const downloadPayload = {
-      job_id: job.id,
-      patent_number: targetPatentNumber.value.trim()
-    }
-    
-    console.log('   Payload:', downloadPayload)
+    console.log('🚀 呼叫 Patent Engine API:', PATENT_ENGINE_URL)
+    console.log('   Payload:', { ...enginePayload, claims_text: enginePayload.claims_text.substring(0, 100) + '...' })
 
-    const downloadResponse = await fetch(downloadUrl, {
+    const engineResponse = await fetch(`${PATENT_ENGINE_URL}/api/v1/search/start`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(downloadPayload)
+      body: JSON.stringify(enginePayload)
     })
 
-    if (!downloadResponse.ok) {
-      const errorText = await downloadResponse.text()
-      throw new Error(`下載系爭專利失敗: ${downloadResponse.status} ${errorText}`)
+    if (!engineResponse.ok) {
+      const errorText = await engineResponse.text()
+      throw new Error(`Patent Engine 啟動失敗: ${engineResponse.status} ${errorText}`)
     }
 
-    const downloadResult = await downloadResponse.json()
-    console.log('✅ 系爭專利下載完成:', downloadResult)
+    const engineResult = await engineResponse.json()
+    console.log('✅ Patent Engine 回應:', engineResult)
 
-    // E. 步驟 2: 檢索證據專利（非同步）
-    updateSearchStep(4, '正在啟動 AI 智慧檢索...', 50)
+    if (!engineResult.success) {
+      throw new Error(engineResult.error || '搜尋引擎啟動失敗')
+    }
+
+    engineWorkflowId.value = engineResult.data.workflow_id
     
-    const searchUrl = import.meta.env.VITE_N8N_WEBHOOK_INVALIDATION_SEARCH_URL
-    if (!searchUrl) {
-      throw new Error('❌ Search Webhook URL 未設定')
-    }
-
-    console.log('🚀 步驟 2/2: 檢索證據專利')
-    console.log('   URL:', searchUrl)
+    // E. 啟動輪詢 Patent Engine 進度
+    updateSearchStep(4, '🔍 AI 正在分析技術特徵並檢索相關專利...', 50)
+    console.log('🔄 檢索已開始，workflow_id:', engineWorkflowId.value)
     
-    const searchPayload = {
-      job_id: job.id,
-      analysis_id: analysisId,
-      transaction_id: transactionId,
-      user_id: userStore.user.id,
-      target_patent_number: targetPatentNumber.value.trim()
-    }
-    
-    console.log('   Payload:', searchPayload)
-
-    const searchResponse = await fetch(searchUrl, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(searchPayload)
-    })
-
-    if (!searchResponse.ok) {
-      const errorText = await searchResponse.text()
-      throw new Error(`檢索證據專利失敗: ${searchResponse.status} ${errorText}`)
-    }
-
-    const searchResult = await searchResponse.json()
-    console.log('✅ Search 回應:', searchResult)
-    
-    // ✅ F. 檢索已開始（非同步）
-    if (searchResult.success) {
-      updateSearchStep(5, '🔍 AI 正在分析技術特徵並檢索相關專利...', 60)
-      console.log('🔄 檢索已開始，啟動輪詢...')
-      
-      // ✅ 啟動輪詢，等待檢索完成
-      startSearchPolling(analysisId)
-      
-    } else {
-      throw new Error(searchResult.error || '檢索啟動失敗')
-    }
+    startSearchPolling(analysisId)
 
   } catch (err) {
     console.error('❌ 檢索失敗:', err)
@@ -598,84 +584,121 @@ const startSearch = async () => {
   }
 }
 
-// ========== 開始輪詢 ==========
+// ========== 開始輪詢 Patent Engine 進度 ==========
 const startSearchPolling = (analysisId) => {
-  console.log('🔄 開始輪詢檢索結果, analysis_id:', analysisId)
+  console.log('🔄 開始輪詢 Patent Engine, workflow_id:', engineWorkflowId.value)
   
-  // 清除舊的輪詢
   stopSearchPolling()
   
   let pollingCount = 0
-  const maxPollingTime = 2400 // 最多輪詢 40 分鐘
+  const maxPollingTime = 600 // 最多 10 分鐘
+  const POLL_INTERVAL = 5000 // 每 5 秒
   
-  // 每 60 秒查詢一次
   searchPollingInterval = setInterval(async () => {
     pollingCount++
-    const elapsedTime = pollingCount * 60
-    
-    // ✅ 更新進度（60% -> 95%）
-    const progress = Math.min(60 + (elapsedTime / maxPollingTime) * 35, 95)
-    progressPercentage.value = Math.round(progress)
-    estimatedTime.value = Math.max(0, 240 - elapsedTime)
+    const elapsedTime = pollingCount * (POLL_INTERVAL / 1000)
     
     try {
-      console.log('🔍 查詢檢索狀態...')
-      
-      const { data: analysis, error } = await supabase
-        .from('patent_invalidation_analyses')
-        .select('search_status, evidence_patents')
-        .eq('id', analysisId)
-        .single()
-      
-      if (error) {
-        console.error('❌ 查詢失敗:', error)
+      const res = await fetch(`${PATENT_ENGINE_URL}/api/v1/search/progress/${engineWorkflowId.value}`)
+      if (!res.ok) {
+        console.error('❌ 進度查詢失敗:', res.status)
         return
       }
       
-      console.log('📊 檢索狀態:', analysis.search_status)
+      const data = await res.json()
+      const prog = data.data
       
-      if (analysis.search_status === 'completed') {
-        // ✅ 檢索完成
-        updateSearchStep(5, '✅ 檢索完成！正在載入結果...', 100)
-        
+      console.log(`📊 進度: Round ${prog.current_round}/${prog.max_rounds}, 已收集 ${prog.collected}/${prog.target}, ${prog.current_action}`)
+      
+      // 用引擎真實進度更新 UI（50% → 95%）
+      const realProgress = Math.min(50 + (prog.progress_pct || 0) * 0.45, 95)
+      progressPercentage.value = Math.round(realProgress)
+      currentStepDescription.value = `🔍 第 ${prog.current_round}/${prog.max_rounds} 輪 — 已收集 ${prog.collected}/${prog.target} 篇 — ${prog.current_action || '搜尋中'}`
+      estimatedTime.value = Math.max(0, 300 - elapsedTime)
+      
+      if (prog.status === 'completed') {
+        // ✅ 搜尋完成 → 取得結果
+        updateSearchStep(5, '✅ 檢索完成！正在載入結果...', 98)
         stopSearchPolling()
+        
+        // 取得完整結果
+        const resultRes = await fetch(`${PATENT_ENGINE_URL}/api/v1/search/result/${engineWorkflowId.value}`)
+        const resultData_raw = await resultRes.json()
+        const patents = resultData_raw.data?.collected_patents || []
+        
+        console.log(`✅ 取得 ${patents.length} 篇結果`)
+        
+        // 轉換格式，寫回 patent_invalidation_analyses
+        const evidencePatents = patents.map(p => ({
+          patent_number: p.patent_number,
+          title: p.title || '',
+          abstract: p.abstract || '',
+          filing_date: p.filing_date || '',
+          relevance_score: p.grade === 'A' ? 0.9 : p.grade === 'B' ? 0.7 : 0.5,
+          grade: p.grade,
+          matched_features: p.matched_features || [],
+          source: 'patent-invalidation-engine'
+        }))
+        
+        // 寫回 Supabase
+        const { error: updateError } = await supabase
+          .from('patent_invalidation_analyses')
+          .update({
+            search_status: 'completed',
+            evidence_patents: evidencePatents
+          })
+          .eq('id', analysisId)
+
+        if (updateError) {
+          console.error('❌ 更新 Supabase 失敗:', updateError)
+        }
+
+        // 更新 saas_jobs
+        await supabase
+          .from('saas_jobs')
+          .update({ status: 'search_completed' })
+          .eq('id', (await supabase.from('patent_invalidation_analyses').select('job_id').eq('id', analysisId).single()).data?.job_id)
+        
+        updateSearchStep(5, '✅ 檢索完成！', 100)
         stopKnowledgeRotation()
         
-        // 延遲 1 秒後關閉 UI，顯示結果
         setTimeout(() => {
           isSearching.value = false
+          searchResults.value = evidencePatents
           
-          if (analysis.evidence_patents && Array.isArray(analysis.evidence_patents)) {
-            searchResults.value = analysis.evidence_patents
-            console.log(`✅ 找到 ${analysis.evidence_patents.length} 篇相關專利`)
-            alert(`✅ 檢索完成！找到 ${analysis.evidence_patents.length} 篇相關專利`)
+          if (evidencePatents.length > 0) {
+            console.log(`✅ 找到 ${evidencePatents.length} 篇相關專利`)
+            alert(`✅ 檢索完成！找到 ${evidencePatents.length} 篇相關專利（Grade A: ${evidencePatents.filter(p => p.grade === 'A').length}，Grade B: ${evidencePatents.filter(p => p.grade === 'B').length}）`)
           } else {
-            console.warn('⚠️ 檢索完成但沒有結果')
             alert('⚠️ 檢索完成，但沒有找到相關專利')
           }
         }, 1000)
         
-      } else if (analysis.search_status === 'failed') {
-        // ❌ 檢索失敗
-        console.error('❌ 檢索失敗')
+      } else if (prog.status === 'failed') {
+        console.error('❌ Patent Engine 檢索失敗')
         stopSearchPolling()
         isSearching.value = false
         stopKnowledgeRotation()
+        
+        // 更新 DB
+        await supabase.from('patent_invalidation_analyses')
+          .update({ search_status: 'failed' })
+          .eq('id', analysisId)
+        
         alert('❌ 檢索失敗，請重試')
         
       } else if (elapsedTime >= maxPollingTime) {
-        // ⏱️ 超時
         console.warn('⏱️ 檢索超時')
         stopSearchPolling()
         isSearching.value = false
         stopKnowledgeRotation()
-        alert('⏱️ 檢索超時，請稍後查看結果或重試')
+        alert('⏱️ 檢索超時（10 分鐘），請稍後查看結果或重試')
       }
       
     } catch (err) {
       console.error('❌ 輪詢異常:', err)
     }
-  }, 60000) // 每 60 秒查詢一次
+  }, POLL_INTERVAL)
 }
 
 // ========== 停止輪詢 ==========
@@ -1253,7 +1276,48 @@ onUnmounted(() => {
           <div class="step-badge">步驟 3</div>
           <div class="header-text">
             <h2>AI 檢索證據專利</h2>
-            <p class="card-description">系統將自動搜尋相關證據專利</p>
+            <p class="card-description">輸入請求項文字，AI 將自動搜尋可用於舉發的先前技術</p>
+          </div>
+        </div>
+
+        <!-- Claims + Domain Hints 輸入區 -->
+        <div v-if="searchResults.length === 0 && !isSearching" class="engine-input-section">
+          <div class="engine-form-group">
+            <label class="engine-label">
+              📝 請求項文字 <span class="engine-required">*</span>
+            </label>
+            <textarea
+              v-model="claimsText"
+              placeholder="請貼上系爭專利的請求項全文（至少 50 字）...&#10;&#10;例如：&#10;1. 一種顯色光阻剝離液組成物，其包含：(a) 選自由四甲基氫氧化銨（TMAH）及氫氧化鉀（KOH）所組成群組之鹼性化合物..."
+              class="engine-textarea"
+              rows="6"
+            ></textarea>
+            <div class="engine-char-info">
+              <span :class="{ 'text-red-500': claimsText.length > 0 && claimsText.length < 50 }">
+                {{ claimsText.length }} 字{{ claimsText.length > 0 && claimsText.length < 50 ? '（至少需 50 字）' : '' }}
+              </span>
+            </div>
+          </div>
+
+          <div class="engine-form-group">
+            <label class="engine-label">
+              💡 行業關鍵字提示 <span class="engine-hint">（選填，大幅提升精準度）</span>
+            </label>
+            <input
+              v-model="domainHints"
+              type="text"
+              placeholder="例如：color resist stripping, TFT-LCD, photoresist（用逗號分隔）"
+              class="engine-input"
+            />
+            <p class="engine-help">Claims 通常使用抽象語言，提供行業關鍵字可讓 AI 找到更精確的證據</p>
+          </div>
+
+          <div class="engine-form-row">
+            <div class="engine-form-group engine-half">
+              <label class="engine-label">📅 申請日截止 <span class="engine-hint">（選填）</span></label>
+              <input v-model="filingDateCutoff" type="date" class="engine-input" />
+              <p class="engine-help">只搜尋此日期前的專利</p>
+            </div>
           </div>
         </div>
         
@@ -1271,7 +1335,7 @@ onUnmounted(() => {
           >
             <span v-if="isSearching">⏳ 檢索中...</span>
             <span v-else-if="insufficientFundsForSearch">❌ 點數不足</span>
-            <span v-else-if="!canStartSearch">📤 請先完成步驟 1</span>
+            <span v-else-if="!canStartSearch">📤 請先輸入專利號 + 請求項文字</span>
             <span v-else>🔍 開始 AI 檢索（{{ SEARCH_COST }} 點）</span>
           </button>
         </div>
@@ -1508,6 +1572,90 @@ onUnmounted(() => {
 </template>
 
 <style scoped>
+/* ========== Patent Engine 輸入區 ========== */
+.engine-input-section {
+  padding: 20px 24px;
+  border-bottom: 1px solid #e2e8f0;
+}
+
+.engine-form-group {
+  margin-bottom: 16px;
+}
+
+.engine-label {
+  display: block;
+  font-weight: 600;
+  color: #374151;
+  margin-bottom: 8px;
+  font-size: 14px;
+}
+
+.engine-required {
+  color: #ef4444;
+}
+
+.engine-hint {
+  font-weight: 400;
+  color: #9ca3af;
+  font-size: 13px;
+}
+
+.engine-textarea {
+  width: 100%;
+  padding: 12px 16px;
+  border: 2px solid #e2e8f0;
+  border-radius: 8px;
+  font-size: 14px;
+  font-family: 'Noto Sans TC', sans-serif;
+  resize: vertical;
+  transition: border-color 0.2s;
+  box-sizing: border-box;
+  line-height: 1.6;
+}
+
+.engine-textarea:focus {
+  outline: none;
+  border-color: #667eea;
+}
+
+.engine-input {
+  width: 100%;
+  padding: 10px 14px;
+  border: 2px solid #e2e8f0;
+  border-radius: 8px;
+  font-size: 14px;
+  transition: border-color 0.2s;
+  box-sizing: border-box;
+}
+
+.engine-input:focus {
+  outline: none;
+  border-color: #667eea;
+}
+
+.engine-char-info {
+  text-align: right;
+  font-size: 12px;
+  color: #9ca3af;
+  margin-top: 4px;
+}
+
+.engine-help {
+  font-size: 13px;
+  color: #6b7280;
+  margin: 6px 0 0;
+}
+
+.engine-form-row {
+  display: flex;
+  gap: 16px;
+}
+
+.engine-half {
+  flex: 1;
+  max-width: 300px;
+}
+
 /* ========== 基礎佈局 ========== */
 .invalidation-page {
   max-width: 1200px;
