@@ -128,7 +128,10 @@ const props = defineProps({
 })
 
 const activeTab = ref('comparison')
-const { generateDefenseDocs, isGenerating } = usePatentDocx()
+const { 
+  generateInvalidationBrief, // ✅ 改用舉發理由書專用函數
+  isGenerating 
+} = usePatentDocx()
 
 // 本地狀態
 const editableComparisonTable = ref([])
@@ -259,22 +262,51 @@ const handleRegenerate = async () => {
   }
 }
 
-// 下載 Word
+// ✅ 修正：使用舉發理由書專用函數
 const handleDownload = async () => {
   console.log('📥 開始下載舉發理由書...')
   
   try {
-    await generateDefenseDocs({
-      fileName: '專利舉發理由書',
-      title: localBriefTitle.value,
-      content: localBriefContent.value,
-      metaInfo: {
-        '系爭專利號': props.resultData.target_patent_number || '待補',
-        '舉發成功機率': `${((props.resultData.conclusion?.success_probability || 0) * 100).toFixed(0)}%`
+    // 準備舉發人資訊（從 resultData 或使用者資料取得）
+    const petitioner = {
+      name: props.resultData.petitioner_name || '【請填寫舉發人姓名】',
+      agent: props.resultData.petitioner_agent || null
+    }
+
+    // 準備證據專利列表
+    const evidencePatents = (props.resultData.evidence_analyses || []).map((evidence, idx) => ({
+      patent_number: evidence.patent_info?.patent_number || `證據${idx + 1}`,
+      title: evidence.patent_info?.title || '【請填寫發明名稱】',
+      application_date: evidence.patent_info?.application_date || '【請填寫】',
+      publication_date: evidence.patent_info?.publication_date || '【請填寫】'
+    }))
+
+    // 取得目標專利資訊
+    const targetPatentNumber = props.resultData.target_patent_number || 
+                               props.resultData.target_analysis?.patent_info?.patent_number || 
+                               '【請填寫專利號】'
+    
+    const targetPatentName = props.resultData.target_analysis?.patent_info?.title || 
+                            '【請填寫發明名稱】'
+
+    // 呼叫舉發理由書生成函數
+    await generateInvalidationBrief({
+      fileName: `舉發理由書_${targetPatentNumber}`,
+      targetPatentNumber: targetPatentNumber,
+      targetPatentName: targetPatentName,
+      petitioner: petitioner,
+      evidencePatents: evidencePatents,
+      resultData: {
+        target_analysis: props.resultData.target_analysis,
+        evidence_analyses: props.resultData.evidence_analyses,
+        feature_comparisons: editableComparisonTable.value, // ✅ 使用編輯後的比對表
+        combination_analysis_text: props.resultData.combination_analysis?.analysis || '',
+        inventive_step_result: props.resultData.inventive_step_analysis
       }
     })
     
     console.log('✅ 下載完成')
+    alert('✅ 舉發理由書已下載！')
   } catch (e) {
     console.error('❌ 下載失敗:', e)
     alert('下載失敗：' + e.message)

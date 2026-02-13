@@ -24,6 +24,7 @@ import AmendmentWorkflow from '../views/services/AmendmentWorkflow.vue'
 import CorrectionWorkflow from '../views/services/CorrectionWorkflow.vue'
 import ReexaminationWorkflow from '../views/services/ReexaminationWorkflow.vue'
 import RectificationWorkflow from '../views/services/RectificationWorkflow.vue'
+import InvalidationSearchStrategyPage from '@/views/InvalidationSearchStrategyPage.vue'
 
 const routes = [
   // 認證相關路由
@@ -55,6 +56,16 @@ const routes = [
     }
   },  
 
+    // 🆕 隱藏的開發者工具頁面
+  {
+    path: '/dev/search-strategy',
+    name: 'dev-search-strategy',
+    component: InvalidationSearchStrategyPage,
+    meta: {
+      hidden: true, // 不顯示在導航列
+      requiresAuth: false // 可以根據需求加上驗證
+    }
+  },
   // 主要應用路由
   {
     path: '/',

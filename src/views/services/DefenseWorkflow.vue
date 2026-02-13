@@ -18,17 +18,26 @@ onMounted(async () => {
   await loadDefenseJobs()
 })
 
+// 修改原有的 getJobTitle
 const getJobTitle = (job) => {
+  // 優先使用發明名稱
+  const inventionTitle = getInventionTitle(job)
+  if (inventionTitle) {
+    return inventionTitle.length > 30 
+      ? inventionTitle.substring(0, 30) + '...' 
+      : inventionTitle
+  }
+  
+  // 其次使用用戶備註
   if (job.input_data?.user_notes) {
-    return job.input_data.user_notes.length > 20 
-      ? job.input_data.user_notes.substring(0, 20) + '...' 
+    return job.input_data.user_notes.length > 30 
+      ? job.input_data.user_notes.substring(0, 30) + '...' 
       : job.input_data.user_notes
   }
   
-  if (job.result_data && typeof job.result_data === 'object') {
-     if (job.result_data.analysis_summary) {
-       return '答辯分析：' + job.result_data.analysis_summary.substring(0, 15) + '...'
-     }
+  // 最後使用分析摘要
+  if (job.result_data?.analysis_summary) {
+    return '答辯分析：' + job.result_data.analysis_summary.substring(0, 20) + '...'
   }
 
   return '專利核駁答辯分析'
@@ -40,7 +49,17 @@ const loadDefenseJobs = async () => {
   try {
     const { data, error } = await supabase
       .from('saas_jobs')
-      .select('*')
+      .select(`
+        *,
+        patent_oa_analyses (
+          application_number,
+          invention_name,
+          oa_notice_date,
+          citation_count,
+          defense_strategy,
+          analysis_status
+        )
+      `)
       .eq('user_id', userStore.user.id)
       .eq('job_type', 'patent_defense')
       .order('updated_at', { ascending: false })
@@ -54,6 +73,21 @@ const loadDefenseJobs = async () => {
   } finally {
     isLoading.value = false
   }
+}
+
+// 🆕 提取專利編號
+const getPatentNumber = (job) => {
+  return job.patent_oa_analyses?.application_number || null
+}
+
+// 🆕 提取發明名稱
+const getInventionTitle = (job) => {
+  return job.patent_oa_analyses?.invention_name || null
+}
+
+// 🆕 提取審查意見日期
+const getOADate = (job) => {
+  return job.patent_oa_analyses?.oa_notice_date || null
 }
 
 const filteredJobs = computed(() => {
@@ -96,6 +130,7 @@ const getStatusInfo = (job) => {
   if (job.status === 'pending') return { label: 'AI 分析中', icon: '⏳', class: 'status-warning' }
   if (job.status === 'reserved') return { label: '已付款待執行', icon: '💰', class: 'status-warning' }
   if (job.status === 'failed') return { label: '失敗', icon: '❌', class: 'status-error' }
+  if (job.status === 'cancelled') return { label: '已取消', icon: '🛑', class: 'status-cancelled' } // 🆕
   return { label: '處理中', icon: '📝', class: 'status-default' }
 }
 
@@ -171,64 +206,77 @@ const getStrategyLabel = (job) => {
       <p>載入中...</p>
     </div>
 
-    <!-- 案件列表 -->
-    <div v-else-if="filteredJobs.length > 0" class="jobs-section">
-      <div class="section-header">
-        <h3>📋 答辯案件列表</h3>
-        <span class="job-count">共 {{ filteredJobs.length }} 個案件</span>
-      </div>
+<!-- 案件列表 -->
+<div v-else-if="filteredJobs.length > 0" class="jobs-section">
+  <div class="section-header">
+    <h3>📋 答辯案件列表</h3>
+    <span class="job-count">共 {{ filteredJobs.length }} 個案件</span>
+  </div>
 
-      <div class="job-list">
-        <div 
-          v-for="job in filteredJobs" 
-          :key="job.id" 
-          class="job-card"
-          @click="goToDefenseDetail(job.id)"
-        >
-          <div class="card-header">
-            <div class="job-id-badge">
-              <span v-if="job.my_patent_drafting_number">
-                📁 {{ job.my_patent_drafting_number }}
-              </span>
-              <span v-else>
-                #{{ job.id.slice(0, 8) }}
-              </span>
-            </div>
-            <div class="status-badge" :class="getStatusInfo(job).class">
-              <span class="status-icon">{{ getStatusInfo(job).icon }}</span>
-              <span class="status-text">{{ getStatusInfo(job).label }}</span>
-            </div>
-          </div>
-          
-          <h3 class="job-title">{{ getJobTitle(job) }}</h3>
-
-          <!-- 策略標籤 -->
-          <div 
-            class="strategy-badge" 
-            :style="{ 
-              background: `${getStrategyLabel(job).color}15`,
-              color: getStrategyLabel(job).color,
-              borderColor: `${getStrategyLabel(job).color}40`
-            }"
-          >
-            <span class="strategy-icon">{{ getStrategyLabel(job).icon }}</span>
-            <span class="strategy-label">{{ getStrategyLabel(job).label }}</span>
-          </div>
-
-          <div class="job-meta">
-            <span class="meta-item">
-              📅 {{ formatDate(job.created_at) }}
-            </span>
-          </div>
-
-          <div class="card-footer">
-            <button class="btn-view">
-              查看詳情 →
-            </button>
-          </div>
+  <div class="job-list">
+    <div 
+      v-for="job in filteredJobs" 
+      :key="job.id" 
+      class="job-card"
+      @click="goToDefenseDetail(job.id)"
+    >
+      <div class="card-header">
+        <div class="job-id-badge">
+          <span v-if="getPatentNumber(job)">
+            📁 {{ getPatentNumber(job) }}
+          </span>
+          <span v-else>
+            #{{ job.id.slice(0, 8) }}
+          </span>
+        </div>
+        <div class="status-badge" :class="getStatusInfo(job).class">
+          <span class="status-icon">{{ getStatusInfo(job).icon }}</span>
+          <span class="status-text">{{ getStatusInfo(job).label }}</span>
         </div>
       </div>
+
+      <!-- 🆕 發明名稱（主標題） -->
+      <h3 class="job-title">{{ getJobTitle(job) }}</h3>
+
+      <!-- 🆕 專利資訊區塊 -->
+      <div class="patent-info" v-if="getPatentNumber(job) || getOADate(job)">
+        <div class="info-row" v-if="getPatentNumber(job)">
+          <span class="info-label">📋 申請號：</span>
+          <span class="info-value">{{ getPatentNumber(job) }}</span>
+        </div>
+        <div class="info-row" v-if="getOADate(job)">
+          <span class="info-label">📅 審查日期：</span>
+          <span class="info-value">{{ getOADate(job) }}</span>
+        </div>
+      </div>
+
+      <!-- 策略標籤 -->
+      <div 
+        class="strategy-badge" 
+        :style="{ 
+          background: `${getStrategyLabel(job).color}15`,
+          color: getStrategyLabel(job).color,
+          borderColor: `${getStrategyLabel(job).color}40`
+        }"
+      >
+        <span class="strategy-icon">{{ getStrategyLabel(job).icon }}</span>
+        <span class="strategy-label">{{ getStrategyLabel(job).label }}</span>
+      </div>
+
+      <div class="job-meta">
+        <span class="meta-item">
+          🕒 建立於 {{ formatDate(job.created_at) }}
+        </span>
+      </div>
+
+      <div class="card-footer">
+        <button class="btn-view">
+          查看詳情 →
+        </button>
+      </div>
     </div>
+  </div>
+</div>
 
     <!-- 空狀態 -->
     <div v-else class="empty-state">
@@ -687,5 +735,43 @@ const getStrategyLabel = (job) => {
     align-items: flex-start;
     gap: 12px;
   }
+}
+
+/* 🆕 專利資訊區塊 */
+.patent-info {
+  background: #f8fafc;
+  border-radius: 8px;
+  padding: 12px;
+  margin-bottom: 12px;
+  border: 1px solid #e2e8f0;
+}
+
+.info-row {
+  display: flex;
+  align-items: center;
+  font-size: 13px;
+  margin-bottom: 6px;
+}
+
+.info-row:last-child {
+  margin-bottom: 0;
+}
+
+.info-label {
+  color: #64748b;
+  font-weight: 600;
+  min-width: 90px;
+}
+
+.info-value {
+  color: #1e293b;
+  font-weight: 500;
+}
+
+/* 新增已取消狀態樣式 */
+.status-cancelled {
+  background: #f3f4f6;
+  color: #6b7280;
+  border: 1px solid #d1d5db;
 }
 </style>

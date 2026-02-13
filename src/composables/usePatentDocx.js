@@ -1769,3 +1769,680 @@ const uploadToStorage = async (userId, jobId, filename, blob) => {
     generateAnalysisReport
   }
 }
+
+// ========================================
+// 🆕 新增：生成專利舉發理由書（完整版）-20260201
+// ========================================
+const generateInvalidationBrief = async ({
+  fileName,
+  targetPatentNumber,
+  targetPatentName,
+  petitioner, // 舉發人資訊
+  evidencePatents, // 證據專利列表
+  resultData // n8n 回傳的分析結果
+}) => {
+  isGenerating.value = true
+  error.value = null
+
+  try {
+    console.log(`🚀 開始生成舉發理由書: ${fileName}`)
+
+    // 1. 建立 Docx（使用專門的函數）
+    const doc = createInvalidationBriefDocx({
+      targetPatentNumber,
+      targetPatentName,
+      petitioner,
+      evidencePatents,
+      resultData
+    })
+
+    // 2. 轉 Blob 並下載
+    const blob = await Packer.toBlob(doc)
+    const finalFileName = `${fileName}_${Date.now()}.docx`
+    saveAs(blob, finalFileName)
+
+    return { success: true, filename: finalFileName }
+
+  } catch (err) {
+    console.error('❌ 舉發理由書生成失敗:', err)
+    error.value = err.message
+    throw err
+  } finally {
+    isGenerating.value = false
+  }
+}
+
+// ========================================
+// 🆕 核心函數：建立舉發理由書 Docx（使用 Table）
+// ========================================
+const createInvalidationBriefDocx = ({
+  targetPatentNumber,
+  targetPatentName,
+  petitioner,
+  evidencePatents,
+  resultData
+}) => {
+  const fontStyle = {
+    ascii: "Times New Roman",
+    hAnsi: "Times New Roman",
+    eastAsia: "PMingLiU"
+  }
+
+  const pageMargins = {
+    top: convertInchesToTwip(1),
+    bottom: convertInchesToTwip(1),
+    left: convertInchesToTwip(1),
+    right: convertInchesToTwip(1)
+  }
+
+  const children = []
+
+  // ========== 標題 ==========
+  children.push(
+    new Paragraph({
+      text: '專利舉發理由書',
+      heading: HeadingLevel.HEADING_1,
+      alignment: AlignmentType.CENTER,
+      spacing: { before: 240, after: 480 }
+    })
+  )
+
+  // ========== 基本資訊 ==========
+  children.push(
+    new Paragraph({
+      children: [
+        new TextRun({ text: '系爭專利號：', bold: true, size: 24, font: fontStyle }),
+        new TextRun({ text: targetPatentNumber, size: 24, font: fontStyle })
+      ],
+      spacing: { after: 120 }
+    })
+  )
+
+  children.push(
+    new Paragraph({
+      children: [
+        new TextRun({ text: '發明名稱：', bold: true, size: 24, font: fontStyle }),
+        new TextRun({ text: targetPatentName, size: 24, font: fontStyle })
+      ],
+      spacing: { after: 120 }
+    })
+  )
+
+  children.push(
+    new Paragraph({
+      children: [
+        new TextRun({ text: '舉發人：', bold: true, size: 24, font: fontStyle }),
+        new TextRun({ text: petitioner.name, size: 24, font: fontStyle })
+      ],
+      spacing: { after: 120 }
+    })
+  )
+
+  if (petitioner.agent) {
+    children.push(
+      new Paragraph({
+        children: [
+          new TextRun({ text: '代理人：', bold: true, size: 24, font: fontStyle }),
+          new TextRun({ text: petitioner.agent, size: 24, font: fontStyle })
+        ],
+        spacing: { after: 120 }
+      })
+    )
+  }
+
+  // 分隔線
+  children.push(
+    new Paragraph({
+      text: '',
+      border: { bottom: { style: 'single', size: 6, space: 1 } },
+      spacing: { before: 120, after: 240 }
+    })
+  )
+
+  // ========== 壹、舉發主旨 ==========
+  children.push(
+    new Paragraph({
+      text: '壹、舉發主旨',
+      heading: HeadingLevel.HEADING_2,
+      spacing: { before: 360, after: 240 }
+    })
+  )
+
+  const applicationDate = resultData.target_analysis?.application_date || '【請填寫】'
+  const publicationDate = resultData.target_analysis?.publication_date || '【請填寫】'
+
+  children.push(
+    new Paragraph({
+      children: [
+        new TextRun({
+          text: `舉發人茲依據專利法第 71 條第 1 項第 1 款之規定，以系爭專利「${targetPatentName}」（專利號：${targetPatentNumber}，申請日：${applicationDate}，公告日：${publicationDate}）不符合專利法第 22 條第 2 項之規定（進步性），提出舉發，請求撤銷系爭專利。`,
+          size: 24,
+          font: fontStyle
+        })
+      ],
+      spacing: { line: 360, after: 240 }
+    })
+  )
+
+  children.push(
+    new Paragraph({
+      children: [
+        new TextRun({ text: '舉發證據：', bold: true, size: 24, font: fontStyle })
+      ],
+      spacing: { before: 120, after: 120 }
+    })
+  )
+
+  evidencePatents.forEach((evidence, idx) => {
+    children.push(
+      new Paragraph({
+        children: [
+          new TextRun({
+            text: `證據 ${idx + 1}：${evidence.patent_number}（${evidence.title}，公開日：${evidence.publication_date}）`,
+            size: 24,
+            font: fontStyle
+          })
+        ],
+        spacing: { after: 60 }
+      })
+    )
+  })
+
+  // ========== 貳、系爭專利技術內容 ==========
+  children.push(
+    new Paragraph({
+      text: '貳、系爭專利技術內容',
+      heading: HeadingLevel.HEADING_2,
+      spacing: { before: 360, after: 240 }
+    })
+  )
+
+  children.push(
+    new Paragraph({
+      text: '2.1 專利基本資訊',
+      heading: HeadingLevel.HEADING_3,
+      spacing: { before: 240, after: 120 }
+    })
+  )
+
+  const basicInfo = [
+    ['專利號', targetPatentNumber],
+    ['發明名稱', targetPatentName],
+    ['申請日', applicationDate],
+    ['公告日', publicationDate]
+  ]
+
+  basicInfo.forEach(([label, value]) => {
+    children.push(
+      new Paragraph({
+        children: [
+          new TextRun({ text: `${label}：`, bold: true, size: 24, font: fontStyle }),
+          new TextRun({ text: value, size: 24, font: fontStyle })
+        ],
+        spacing: { after: 60 }
+      })
+    )
+  })
+
+  children.push(
+    new Paragraph({
+      text: '2.2 請求項 1 的技術特徵',
+      heading: HeadingLevel.HEADING_3,
+      spacing: { before: 240, after: 120 }
+    })
+  )
+
+  children.push(
+    new Paragraph({
+      children: [
+        new TextRun({ text: '請求項 1 原文：', bold: true, size: 24, font: fontStyle })
+      ],
+      spacing: { after: 120 }
+    })
+  )
+
+  const claim1Text = resultData.target_analysis?.claim_1_text || '【請填寫請求項 1 原文】'
+  children.push(
+    new Paragraph({
+      children: [
+        new TextRun({ text: claim1Text, size: 24, font: fontStyle, italics: true })
+      ],
+      spacing: { line: 360, after: 240 },
+      indent: { left: convertInchesToTwip(0.5) }
+    })
+  )
+
+  children.push(
+    new Paragraph({
+      children: [
+        new TextRun({ text: '技術特徵拆解：', bold: true, size: 24, font: fontStyle })
+      ],
+      spacing: { before: 120, after: 120 }
+    })
+  )
+
+  const features = resultData.target_analysis?.technical_features || []
+  features.forEach((feature, idx) => {
+    children.push(
+      new Paragraph({
+        children: [
+          new TextRun({ 
+            text: `特徵 ${String.fromCharCode(65 + idx)}：`, 
+            bold: true, 
+            size: 24, 
+            font: fontStyle 
+          }),
+          new TextRun({ text: feature, size: 24, font: fontStyle })
+        ],
+        spacing: { after: 60 }
+      })
+    )
+  })
+
+  // ========== 參、證據專利技術內容 ==========
+  children.push(
+    new Paragraph({
+      text: '參、證據專利技術內容',
+      heading: HeadingLevel.HEADING_2,
+      spacing: { before: 360, after: 240 }
+    })
+  )
+
+  evidencePatents.forEach((evidence, idx) => {
+    const evidenceAnalysis = resultData.evidence_analyses?.[idx] || {}
+
+    children.push(
+      new Paragraph({
+        text: `3.${idx + 1} 證據 ${idx + 1}`,
+        heading: HeadingLevel.HEADING_3,
+        spacing: { before: 240, after: 120 }
+      })
+    )
+
+    const evidenceInfo = [
+      ['專利號', evidence.patent_number],
+      ['發明名稱', evidence.title],
+      ['申請日', evidence.application_date],
+      ['公開日/公告日', evidence.publication_date]
+    ]
+
+    evidenceInfo.forEach(([label, value]) => {
+      children.push(
+        new Paragraph({
+          children: [
+            new TextRun({ text: `${label}：`, bold: true, size: 24, font: fontStyle }),
+            new TextRun({ text: value, size: 24, font: fontStyle })
+          ],
+          spacing: { after: 60 }
+        })
+      )
+    })
+
+    children.push(
+      new Paragraph({
+        children: [
+          new TextRun({ text: '技術內容摘要：', bold: true, size: 24, font: fontStyle })
+        ],
+        spacing: { before: 120, after: 60 }
+      })
+    )
+
+    children.push(
+      new Paragraph({
+        children: [
+          new TextRun({ 
+            text: evidenceAnalysis.summary || '【請填寫證據專利技術摘要】', 
+            size: 24, 
+            font: fontStyle 
+          })
+        ],
+        spacing: { line: 360, after: 120 }
+      })
+    )
+
+    children.push(
+      new Paragraph({
+        children: [
+          new TextRun({ text: '主要技術特徵：', bold: true, size: 24, font: fontStyle })
+        ],
+        spacing: { before: 120, after: 60 }
+      })
+    )
+
+    const evidenceFeatures = evidenceAnalysis.technical_features || []
+    evidenceFeatures.forEach((feature, fIdx) => {
+      children.push(
+        new Paragraph({
+          children: [
+            new TextRun({ text: `${fIdx + 1}. ${feature}`, size: 24, font: fontStyle })
+          ],
+          spacing: { after: 60 }
+        })
+      )
+    })
+  })
+
+  // ========== 肆、技術特徵比對 ==========
+  children.push(
+    new Paragraph({
+      text: '肆、技術特徵比對',
+      heading: HeadingLevel.HEADING_2,
+      spacing: { before: 360, after: 240 }
+    })
+  )
+
+  children.push(
+    new Paragraph({
+      text: '4.1 比對表',
+      heading: HeadingLevel.HEADING_3,
+      spacing: { before: 240, after: 120 }
+    })
+  )
+
+  // ✅ 使用 docx 的 Table 功能
+  const { Table, TableRow, TableCell, WidthType, VerticalAlign, Shading } = require('docx')
+
+  const comparisons = resultData.feature_comparisons || []
+  
+  const tableRows = [
+    // 表頭
+    new TableRow({
+      tableHeader: true,
+      children: [
+        new TableCell({
+          children: [new Paragraph({ 
+            text: '系爭專利技術特徵', 
+            alignment: AlignmentType.CENTER,
+            children: [new TextRun({ text: '系爭專利技術特徵', bold: true, size: 24, font: fontStyle })]
+          })],
+          shading: { fill: 'D9D9D9' },
+          verticalAlign: VerticalAlign.CENTER
+        }),
+        new TableCell({
+          children: [new Paragraph({ 
+            text: '證據 1', 
+            alignment: AlignmentType.CENTER,
+            children: [new TextRun({ text: '證據 1', bold: true, size: 24, font: fontStyle })]
+          })],
+          shading: { fill: 'D9D9D9' },
+          verticalAlign: VerticalAlign.CENTER
+        }),
+        new TableCell({
+          children: [new Paragraph({ 
+            text: '證據 2', 
+            alignment: AlignmentType.CENTER,
+            children: [new TextRun({ text: '證據 2', bold: true, size: 24, font: fontStyle })]
+          })],
+          shading: { fill: 'D9D9D9' },
+          verticalAlign: VerticalAlign.CENTER
+        }),
+        new TableCell({
+          children: [new Paragraph({ 
+            text: '比對結果', 
+            alignment: AlignmentType.CENTER,
+            children: [new TextRun({ text: '比對結果', bold: true, size: 24, font: fontStyle })]
+          })],
+          shading: { fill: 'D9D9D9' },
+          verticalAlign: VerticalAlign.CENTER
+        })
+      ]
+    })
+  ]
+
+  // 表格內容
+  comparisons.forEach((comp) => {
+    const evidence1Text = comp.evidence_1_match 
+      ? `✅ 已揭露（${comp.evidence_1_location}）` 
+      : '❌ 未揭露'
+    
+    const evidence2Text = comp.evidence_2_match 
+      ? `✅ 已揭露（${comp.evidence_2_location}）` 
+      : '❌ 未揭露'
+    
+    const resultText = comp.evidence_1_match || comp.evidence_2_match ? '已揭露' : '未揭露'
+
+    tableRows.push(
+      new TableRow({
+        children: [
+          new TableCell({
+            children: [new Paragraph({ 
+              children: [
+                new TextRun({ text: `${comp.feature_id}: `, bold: true, size: 22, font: fontStyle }),
+                new TextRun({ text: comp.feature_text, size: 22, font: fontStyle })
+              ]
+            })],
+            verticalAlign: VerticalAlign.CENTER
+          }),
+          new TableCell({
+            children: [new Paragraph({ 
+              text: evidence1Text,
+              children: [new TextRun({ text: evidence1Text, size: 22, font: fontStyle })]
+            })],
+            verticalAlign: VerticalAlign.CENTER
+          }),
+          new TableCell({
+            children: [new Paragraph({ 
+              text: evidence2Text,
+              children: [new TextRun({ text: evidence2Text, size: 22, font: fontStyle })]
+            })],
+            verticalAlign: VerticalAlign.CENTER
+          }),
+          new TableCell({
+            children: [new Paragraph({ 
+              text: resultText,
+              alignment: AlignmentType.CENTER,
+              children: [new TextRun({ text: resultText, bold: true, size: 22, font: fontStyle })]
+            })],
+            verticalAlign: VerticalAlign.CENTER
+          })
+        ]
+      })
+    )
+  })
+
+  const comparisonTable = new Table({
+    rows: tableRows,
+    width: {
+      size: 100,
+      type: WidthType.PERCENTAGE
+    }
+  })
+
+  children.push(comparisonTable)
+
+  // ========== 伍、進步性分析 ==========
+  children.push(
+    new Paragraph({
+      text: '伍、進步性分析',
+      heading: HeadingLevel.HEADING_2,
+      spacing: { before: 360, after: 240 }
+    })
+  )
+
+  const inventiveStepSections = [
+    ['5.1 技術領域關聯性', resultData.inventive_step_result?.field_relevance],
+    ['5.2 技術組合的合理性', resultData.combination_analysis_text],
+    ['5.3 技術差異的顯而易見性', resultData.inventive_step_result?.obviousness_analysis],
+    ['5.4 技術效果的可預期性', resultData.inventive_step_result?.effect_predictability]
+  ]
+
+  inventiveStepSections.forEach(([title, content]) => {
+    children.push(
+      new Paragraph({
+        text: title,
+        heading: HeadingLevel.HEADING_3,
+        spacing: { before: 240, after: 120 }
+      })
+    )
+
+    children.push(
+      new Paragraph({
+        children: [
+          new TextRun({ 
+            text: content || '【請填寫分析內容】', 
+            size: 24, 
+            font: fontStyle 
+          })
+        ],
+        spacing: { line: 360, after: 240 }
+      })
+    )
+  })
+
+  children.push(
+    new Paragraph({
+      text: '5.5 結論',
+      heading: HeadingLevel.HEADING_3,
+      spacing: { before: 240, after: 120 }
+    })
+  )
+
+  children.push(
+    new Paragraph({
+      children: [
+        new TextRun({
+          text: `綜合以上分析，系爭專利之技術特徵可由證據專利組合完成，且該組合對所屬技術領域中具有通常知識者而言是顯而易見的，系爭專利不具進步性，不符合專利法第 22 條第 2 項之規定。`,
+          size: 24,
+          font: fontStyle
+        })
+      ],
+      spacing: { line: 360, after: 240 }
+    })
+  )
+
+  // ========== 陸、結論與請求 ==========
+  children.push(
+    new Paragraph({
+      text: '陸、結論與請求',
+      heading: HeadingLevel.HEADING_2,
+      spacing: { before: 360, after: 240 }
+    })
+  )
+
+  children.push(
+    new Paragraph({
+      children: [
+        new TextRun({
+          text: `綜上所述，系爭專利「${targetPatentName}」（專利號：${targetPatentNumber}）之技術特徵可由證據專利組合完成，且該組合對所屬技術領域中具有通常知識者而言是顯而易見的，系爭專利不具進步性，不符合專利法第 22 條第 2 項之規定。`,
+          size: 24,
+          font: fontStyle
+        })
+      ],
+      spacing: { line: 360, after: 240 }
+    })
+  )
+
+  children.push(
+    new Paragraph({
+      children: [
+        new TextRun({
+          text: '懇請 鈞局詳予審酌，作成舉發成立之審定，撤銷系爭專利。',
+          size: 24,
+          font: fontStyle
+        })
+      ],
+      spacing: { line: 360, after: 360 }
+    })
+  )
+
+  children.push(
+    new Paragraph({
+      text: '此致',
+      spacing: { before: 240, after: 120 }
+    })
+  )
+
+  children.push(
+    new Paragraph({
+      children: [
+        new TextRun({ text: '經濟部智慧財產局', bold: true, size: 24, font: fontStyle })
+      ],
+      spacing: { after: 240 }
+    })
+  )
+
+  const currentDate = new Date()
+  const rocYear = currentDate.getFullYear() - 1911
+  const month = currentDate.getMonth() + 1
+  const day = currentDate.getDate()
+
+  children.push(
+    new Paragraph({
+      children: [
+        new TextRun({ text: `舉發人：${petitioner.name}`, size: 24, font: fontStyle })
+      ],
+      spacing: { after: 60 }
+    })
+  )
+
+  if (petitioner.agent) {
+    children.push(
+      new Paragraph({
+        children: [
+          new TextRun({ text: `代理人：${petitioner.agent}`, size: 24, font: fontStyle })
+        ],
+        spacing: { after: 60 }
+      })
+    )
+  }
+
+  children.push(
+    new Paragraph({
+      children: [
+        new TextRun({ 
+          text: `中華民國 ${rocYear} 年 ${month} 月 ${day} 日`, 
+          size: 24, 
+          font: fontStyle 
+        })
+      ],
+      spacing: { before: 120, after: 360 }
+    })
+  )
+
+  // ========== 柒、證據清單 ==========
+  children.push(
+    new Paragraph({
+      text: '柒、證據清單',
+      heading: HeadingLevel.HEADING_2,
+      spacing: { before: 360, after: 240 }
+    })
+  )
+
+  evidencePatents.forEach((evidence, idx) => {
+    children.push(
+      new Paragraph({
+        children: [
+          new TextRun({
+            text: `${idx + 1}. 證據 ${idx + 1}：${evidence.patent_number}，發明名稱「${evidence.title}」，申請日 ${evidence.application_date}，公開日 ${evidence.publication_date}`,
+            size: 24,
+            font: fontStyle
+          })
+        ],
+        spacing: { after: 120 }
+      })
+    )
+  })
+
+  // ========== 建立文件 ==========
+  const footer = new Footer({
+    children: [
+      new Paragraph({
+        alignment: AlignmentType.CENTER,
+        children: [
+          new TextRun({ children: [PageNumber.CURRENT], font: fontStyle })
+        ]
+      })
+    ]
+  })
+
+  return new Document({
+    sections: [{
+      properties: {
+        page: { margin: pageMargins }
+      },
+      footers: { default: footer },
+      children: children
+    }]
+  })
+}
+

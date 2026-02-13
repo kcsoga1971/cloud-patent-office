@@ -276,32 +276,60 @@
       </div>
     </div>
 
-    <!-- ========== 3️⃣ AI 分析中介面 ========== -->
-    <div v-else-if="isProcessing && !resultData" class="status-container">
-      <div class="status-card">
-        <div class="spinner-large"></div>
-        <h2>🤖 AI 正在分析審查意見...</h2>
-        <p class="status-text">{{ jobStatusText }}</p>
-        <p class="status-description">這通常需要 2-5 分鐘，請稍候</p>
+    <!-- ========== 3️⃣ AI 分析中介面 🆕 （新增停止按鈕）========== -->
+    <div v-else-if="isProcessing" class="processing-section">
+      <div class="processing-card">
+        <div class="processing-icon">
+          <div class="spinner"></div>
+        </div>
         
-        <!-- 流程進度指示 -->
-        <div class="analysis-steps">
-          <div class="analysis-step completed">
-            <div class="step-icon">✅</div>
-            <div class="step-label">上傳檔案</div>
+        <h2>🤖 AI 正在分析中...</h2>
+        
+        <div class="status-info">
+          <p class="status-text">當前狀態：{{ jobStatusText }}</p>
+          <p class="status-hint">預計需要 5-10 分鐘，請稍候</p>
+        </div>
+
+        <div class="progress-steps">
+          <div class="step" :class="{ active: jobStatus === 'phase1_oa' }">
+            <span class="step-number">1</span>
+            <span class="step-label">解析審查意見</span>
           </div>
-          <div class="analysis-step completed">
-            <div class="step-icon">✅</div>
-            <div class="step-label">文字提取 (OCR)</div>
+          <div class="step" :class="{ active: jobStatus === 'phase2_spec' }">
+            <span class="step-number">2</span>
+            <span class="step-label">分析說明書</span>
           </div>
-          <div class="analysis-step active">
-            <div class="step-icon">🔄</div>
-            <div class="step-label">Gemini 策略分析</div>
+          <div class="step" :class="{ active: jobStatus === 'phase3_citations' }">
+            <span class="step-number">3</span>
+            <span class="step-label">分析引證案</span>
           </div>
-          <div class="analysis-step">
-            <div class="step-icon">⏳</div>
-            <div class="step-label">生成答辯稿</div>
+          <div class="step" :class="{ active: jobStatus === 'phase4_first_layer' }">
+            <span class="step-number">4</span>
+            <span class="step-label">第一層分析</span>
           </div>
+          <div class="step" :class="{ active: jobStatus === 'phase5_second_layer' }">
+            <span class="step-number">5</span>
+            <span class="step-label">第二層分析</span>
+          </div>
+          <div class="step" :class="{ active: jobStatus === 'phase6_amendments' }">
+            <span class="step-number">6</span>
+            <span class="step-label">生成修正稿</span>
+          </div>
+          <div class="step" :class="{ active: jobStatus === 'phase7_defense' }">
+            <span class="step-number">7</span>
+            <span class="step-label">生成答辯書</span>
+          </div>
+        </div>
+
+        <!-- 🆕 停止按鈕 -->
+        <div class="action-buttons">
+          <button 
+            class="btn-stop" 
+            @click="stopAnalysis"
+            :disabled="isStopping"
+          >
+            {{ isStopping ? '⏳ 停止中...' : '🛑 停止分析' }}
+          </button>
         </div>
 
         <button @click="router.push('/services/defense-workflow')" class="btn-secondary">
@@ -310,22 +338,94 @@
       </div>
     </div>
 
-    <!-- ========== 4️⃣ 結果顯示介面 ========== -->
+    <!-- ========== 🆕 4️⃣ 已取消狀態 ========== -->
+    <div v-else-if="isCancelled" class="cancelled-section">
+      <div class="cancelled-card">
+        <div class="cancelled-icon">🛑</div>
+        <h2>分析已取消</h2>
+        
+        <div class="cancelled-info">
+          <p>此案件已被取消，點數已退還。</p>
+          <p class="cancelled-time" v-if="jobData">
+            取消時間：{{ formatDate(jobData.updated_at) }}
+          </p>
+        </div>
+
+        <div class="action-buttons">
+          <button class="btn-primary" @click="restartAnalysis">
+            🔄 重新開始分析
+          </button>
+          <button class="btn-secondary" @click="deleteJob">
+            🗑️ 刪除此案件
+          </button>
+          <button class="btn-outline" @click="router.push('/services/defense-workflow')">
+            📋 返回列表
+          </button>
+        </div>
+      </div>
+    </div>
+
+    <!-- ========== 🆕 5️⃣ 失敗狀態 ========== -->
+    <div v-else-if="isFailed" class="failed-section">
+      <div class="failed-card">
+        <div class="failed-icon">❌</div>
+        <h2>分析失敗</h2>
+        
+        <div class="failed-info">
+          <p>此案件分析失敗。</p>
+          <p class="error-message" v-if="jobData && jobData.error_message">
+            錯誤訊息：{{ jobData.error_message }}
+          </p>
+          <p class="failed-time" v-if="jobData">
+            失敗時間：{{ formatDate(jobData.updated_at) }}
+          </p>
+        </div>
+
+        <div class="action-buttons">
+          <button class="btn-primary" @click="restartAnalysis">
+            🔄 重新開始分析
+          </button>
+          <button class="btn-secondary" @click="deleteJob">
+            🗑️ 刪除此案件
+          </button>
+          <button class="btn-outline" @click="router.push('/services/defense-workflow')">
+            📋 返回列表
+          </button>
+        </div>
+      </div>
+    </div>
+
+    <!-- ========== 6️⃣ 結果顯示介面 ========== -->
     <DefenseResultPanel 
       v-else-if="resultData"
       :result-data="resultData"
       :job-id="jobId"
     />
 
-    <!-- ========== 5️⃣ 錯誤狀態 ========== -->
-    <div v-else class="status-container">
-      <div class="status-card error">
-        <div class="error-icon">⚠️</div>
+    <!-- ========== 🆕 7️⃣ 未知狀態（兜底） ========== -->
+    <div v-else class="unknown-section">
+      <div class="unknown-card">
+        <div class="unknown-icon">⚠️</div>
         <h2>狀態異常</h2>
-        <p>請重新整理頁面或返回案件列表</p>
-        <button @click="router.push('/services/defense-workflow')" class="btn-secondary">
-          返回案件列表
-        </button>
+        
+        <div class="unknown-info">
+          <p>此案件狀態異常，無法顯示。</p>
+          <p class="status-text" v-if="jobData">
+            當前狀態：{{ jobData.status }}
+          </p>
+        </div>
+
+        <div class="action-buttons">
+          <button class="btn-primary" @click="restartAnalysis">
+            🔄 重新開始分析
+          </button>
+          <button class="btn-secondary" @click="deleteJob">
+            🗑️ 刪除此案件
+          </button>
+          <button class="btn-outline" @click="router.push('/services/defense-workflow')">
+            📋 返回列表
+          </button>
+        </div>
       </div>
     </div>
 
@@ -398,7 +498,15 @@ const router = useRouter()
 const route = useRoute()
 const userStore = useUserStore()
 
-const DEFENSE_COST = 500
+// 🆕 新增停止相關變數
+const isStopping = ref(false)
+
+// 🆕 新增案件狀態變數
+const jobData = ref(null)
+const isCancelled = computed(() => jobData.value?.status === 'cancelled')
+const isFailed = computed(() => jobData.value?.status === 'failed')
+
+const DEFENSE_COST = 1500
 
 // Data
 const jobId = ref(route.query.job_id || null)
@@ -422,6 +530,18 @@ const insufficientFunds = computed(() => {
 const handleFileUpload = (event, type) => {
   const file = event.target.files[0]
   if (file) files.value[type] = file
+}
+
+const formatDate = (dateString) => {
+  if (!dateString) return '未知'
+  const date = new Date(dateString)
+  return date.toLocaleString('zh-TW', {
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
+    hour: '2-digit',
+    minute: '2-digit'
+  })
 }
 
 const canStart = computed(() => files.value.spec && files.value.oa)
@@ -448,11 +568,10 @@ const handleStartClick = () => {
   showConfirmModal.value = true
 }
 
-// ========== 🆕 載入現有案件資料 ==========
+// 修改 loadExistingJob 函數（載入 jobData）
 const loadExistingJob = async () => {
   if (!jobId.value) return
   
-  // ✅ 防止重複載入
   if (isProcessing.value || resultData.value) {
     console.log('⚠️ 已經在處理中或已有結果，跳過載入')
     return
@@ -471,6 +590,9 @@ const loadExistingJob = async () => {
     
     console.log('✅ 案件資料:', data)
     
+    // 🆕 儲存完整的 jobData
+    jobData.value = data
+    
     jobStatus.value = data.phase || data.status
     patentNumber.value = data.my_patent_drafting_number || ''
     
@@ -479,53 +601,84 @@ const loadExistingJob = async () => {
       userNotes.value = data.input_data.user_notes || ''
     }
     
+    // ========== ✅ 檢查是否已取消 ==========
+    if (data.status === 'cancelled') {
+      console.log('🛑 案件已取消')
+      isProcessing.value = false
+      isInit.value = false
+      return
+    }
+    
+    // ========== ✅ 檢查是否失敗 ==========
+    if (data.status === 'failed') {
+      console.error('❌ 案件失敗')
+      isProcessing.value = false
+      isInit.value = false
+      return
+    }
+    
     // ========== ✅ 檢查是否已完成 ==========
     if (data.status === 'completed' && data.result_data) {
       console.log('✅ 案件已完成，載入結果')
-      
+  
       let parsedResult = data.result_data
+  
       if (typeof parsedResult === 'string') {
         try { 
-          parsedResult = JSON.parse(parsedResult) 
+          parsedResult = JSON.parse(parsedResult)
+      
+          if (typeof parsedResult === 'string') {
+            console.log('⚠️ 偵測到雙重 JSON 字串，進行二次解析')
+            parsedResult = JSON.parse(parsedResult)
+          }
+      
+          console.log('✅ result_data 解析成功')
         } catch (e) {
           console.error('❌ 解析結果失敗:', e)
+          alert('資料格式錯誤，請聯繫技術支援')
+          isProcessing.value = false
+          isInit.value = false
+          return
         }
       }
-      
-      if (parsedResult && (parsedResult.analysis_summary || parsedResult.argument)) {
+  
+      const hasValidData = parsedResult && (
+        parsedResult.oa_analysis || 
+        parsedResult.analysis_summary || 
+        parsedResult.argument ||
+        parsedResult.amendments
+      )
+  
+      if (hasValidData) {
+        console.log('✅ 資料格式正確，載入結果')
         resultData.value = parsedResult
+        isProcessing.value = false
+        isInit.value = false
+        return
+      } else {
+        console.warn('⚠️ result_data 格式異常:', parsedResult)
+        alert('分析結果格式異常，請重新分析')
         isProcessing.value = false
         isInit.value = false
         return
       }
     }
     
-    // ========== ✅ 檢查是否失敗 ==========
-    if (data.status === 'failed') {
-      console.error('❌ 案件失敗')
-      alert('此案件分析失敗，請重新建立。')
-      isProcessing.value = false
-      isInit.value = true
-      return
-    }
-    
     // ========== 🆕 關鍵：檢查 pending 狀態的時效性 ==========
     const processingStatuses = ['pending', 'drafting', 'reserved', 'processing']
     
     if (processingStatuses.includes(data.status)) {
-      // ✅ 檢查建立時間
       const createdAt = new Date(data.created_at)
       const now = new Date()
       const minutesElapsed = (now - createdAt) / 1000 / 60
       
       console.log(`⏱️ 案件建立於 ${minutesElapsed.toFixed(1)} 分鐘前`)
       
-      // ✅ 如果超過 10 分鐘還是 pending，可能是啟動失敗
-      if (minutesElapsed > 10) {
-        console.warn('⚠️ 案件超過 10 分鐘仍未完成，可能啟動失敗')
+      if (minutesElapsed > 15) {
+        console.warn('⚠️ 案件超過 15 分鐘仍未完成，可能啟動失敗')
         
         const shouldRetry = confirm(
-          '此案件已超過 10 分鐘仍未完成，可能啟動失敗。\n\n' +
+          '此案件已超過 15 分鐘仍未完成，可能啟動失敗。\n\n' +
           '是否重新啟動分析流程？\n' +
           '（將重新呼叫 n8n，不會重複扣款）'
         )
@@ -534,7 +687,6 @@ const loadExistingJob = async () => {
           console.log('🔄 用戶選擇重新啟動')
           await retriggerWebhook(data)
           
-          // 重新啟動後開始輪詢
           isInit.value = false
           isProcessing.value = true
           isUploading.value = false
@@ -542,19 +694,13 @@ const loadExistingJob = async () => {
         } else {
           console.log('❌ 用戶取消重新啟動')
           isProcessing.value = false
-          isInit.value = true
+          isInit.value = false
         }
         
         return
       }
       
-      // ✅ 時間正常，繼續輪詢
       console.log('⏳ 案件處理中，開始輪詢...')
-      console.log('📊 當前狀態:', {
-        status: data.status,
-        phase: data.phase,
-        payment_status: data.payment_status
-      })
       
       isInit.value = false
       isProcessing.value = true
@@ -564,18 +710,79 @@ const loadExistingJob = async () => {
       return
     }
     
-    // ========== 未知狀態 ==========
     console.warn('⚠️ 未知狀態:', data.status)
-    alert(`案件狀態異常：${data.status}`)
     isProcessing.value = false
-    isInit.value = true
+    isInit.value = false
     
   } catch (err) {
     console.error('❌ 載入案件失敗:', err)
     alert('載入案件失敗：' + err.message)
     isProcessing.value = false
-    isInit.value = true
+    isInit.value = false
   }
+}
+
+// 🆕 刪除案件函數
+const deleteJob = async () => {
+  if (!jobId.value) return
+  
+  const confirmDelete = confirm(
+    '確定要刪除此案件嗎？\n\n' +
+    '此操作無法復原。'
+  )
+  
+  if (!confirmDelete) return
+  
+  try {
+    console.log('🗑️ 刪除案件:', jobId.value)
+    
+    // 1. 刪除 Storage 中的檔案
+    if (jobData.value?.input_data?.spec_file_path) {
+      await supabase.storage
+        .from('patent-documents')
+        .remove([jobData.value.input_data.spec_file_path])
+    }
+    
+    if (jobData.value?.input_data?.oa_file_path) {
+      await supabase.storage
+        .from('patent-documents')
+        .remove([jobData.value.input_data.oa_file_path])
+    }
+    
+    // 2. 刪除資料庫記錄
+    const { error } = await supabase
+      .from('saas_jobs')
+      .delete()
+      .eq('id', jobId.value)
+    
+    if (error) throw error
+    
+    console.log('✅ 案件已刪除')
+    alert('案件已刪除')
+    
+    // 3. 返回列表頁
+    router.push('/services/defense/workflow')
+    
+  } catch (err) {
+    console.error('❌ 刪除失敗:', err)
+    alert('刪除失敗: ' + err.message)
+  }
+}
+
+// 🆕 重新開始分析
+const restartAnalysis = () => {
+  // 清空狀態
+  jobId.value = null
+  jobData.value = null
+  resultData.value = null
+  isInit.value = true
+  isProcessing.value = false
+  files.value = { spec: null, oa: null }
+  
+  // 清除 URL 參數
+  router.replace({ path: '/services/defense', query: {} })
+  
+  console.log('🔄 重新開始分析')
 }
 
 // ========== 🆕 重新觸發 Webhook ==========
@@ -846,18 +1053,107 @@ const executeDefenseJob = async () => {
   }
 }
 
+// 修改 stopAnalysis 函數（更新 jobData）
+const stopAnalysis = async () => {
+  if (!jobId.value) return
+  
+  const confirmStop = confirm(
+    '確定要停止分析嗎？\n\n' +
+    '停止後將會：\n' +
+    '1. 停止輪詢\n' +
+    '2. 退還已預扣的點數\n' +
+    '3. 將案件標記為「已取消」\n\n' +
+    '此操作無法復原。'
+  )
+  
+  if (!confirmStop) return
+  
+  isStopping.value = true
+  console.log('🛑 用戶主動停止分析')
+  
+  try {
+    // 1. 停止輪詢
+    if (pollTimer.value) {
+      clearInterval(pollTimer.value)
+      pollTimer.value = null
+      console.log('✅ 輪詢已停止')
+    }
+    
+    // 2. 查詢案件資料
+    const { data: currentJobData, error: jobError } = await supabase
+      .from('saas_jobs')
+      .select('*')
+      .eq('id', jobId.value)
+      .single()
+    
+    if (jobError) throw jobError
+    
+    // 3. 如果有預扣款，執行退款
+    if (currentJobData.transaction_id && currentJobData.payment_status === 'reserved') {
+      console.log('💰 執行退款...')
+      
+      const { data: refundResult, error: refundError } = await supabase
+        .rpc('refund_credits', {
+          p_transaction_id: currentJobData.transaction_id,
+          p_reason: '用戶主動取消分析'
+        })
+      
+      if (refundError) {
+        console.error('❌ 退款失敗:', refundError)
+        throw new Error('退款失敗: ' + refundError.message)
+      }
+      
+      console.log('✅ 退款成功:', refundResult)
+    }
+    
+    // 4. 更新案件狀態為「已取消」
+    const { data: updatedJob, error: updateError } = await supabase
+      .from('saas_jobs')
+      .update({
+        status: 'cancelled',
+        payment_status: currentJobData.transaction_id ? 'refunded' : 'none',
+        error_message: '用戶主動取消',
+        updated_at: new Date().toISOString()
+      })
+      .eq('id', jobId.value)
+      .select()
+      .single()
+    
+    if (updateError) throw updateError
+    
+    // 🆕 更新 jobData（關鍵！）
+    jobData.value = updatedJob
+    
+    // 5. 刷新用戶資料
+    await userStore.fetchUser()
+    
+    // 🆕 更新 UI 狀態
+    isProcessing.value = false
+    isInit.value = false
+    
+    console.log('✅ 停止完成')
+    alert('分析已停止，點數已退還。')
+    
+  } catch (err) {
+    console.error('❌ 停止失敗:', err)
+    alert('停止失敗: ' + err.message)
+  } finally {
+    isStopping.value = false
+  }
+}
+
+// 修改輪詢函數（改為 15 秒一次）
 const startPolling = () => {
-  // ✅ 關鍵：先清除舊的輪詢
   if (pollTimer.value) {
     console.log('🛑 停止舊的輪詢')
     clearInterval(pollTimer.value)
     pollTimer.value = null
   }
   
-  console.log('🔄 開始輪詢狀態...')
+  console.log('🔄 開始輪詢狀態（每 15 秒一次）')
   
   let pollCount = 0
-  const maxPolls = 120
+  const maxPolls = 80 // 15秒 * 80 = 20分鐘
   
   pollTimer.value = setInterval(async () => {
     if (!jobId.value) {
@@ -868,7 +1164,7 @@ const startPolling = () => {
     }
 
     pollCount++
-    console.log(`🔄 輪詢第 ${pollCount} 次...`)
+    console.log(`🔄 輪詢第 ${pollCount} 次（已等待 ${pollCount * 15} 秒）...`)
 
     const { data, error } = await supabase
       .from('saas_jobs')
@@ -890,44 +1186,46 @@ const startPolling = () => {
 
     jobStatus.value = data.phase || data.status
 
-    // ✅ 關鍵修正：處理 result_data（雙重 JSON 字串）
+    // ✅ 處理 result_data（雙重 JSON 字串）
     if (data.result_data) {
       let parsedResult = data.result_data
       
-      // 如果是字串，嘗試解析
       if (typeof parsedResult === 'string') {
         try {
           parsedResult = JSON.parse(parsedResult)
           
-          // 如果解析後還是字串（雙重 JSON），再解析一次
           if (typeof parsedResult === 'string') {
             console.log('⚠️ 偵測到雙重 JSON 字串，進行二次解析')
             parsedResult = JSON.parse(parsedResult)
           }
           
-          console.log('✅ result_data 解析成功:', parsedResult)
+          console.log('✅ result_data 解析成功')
           
         } catch (e) {
           console.error('❌ 解析 result_data 失敗:', e)
-          console.error('原始資料:', data.result_data)
         }
       }
       
-      // ✅ 更新解析後的資料
       data.result_data = parsedResult
     }
-    
-    // ✅ 加強 log：檢查條件
-    console.log('🔍 檢查完成條件:', {
-      'status === completed': data.status === 'completed',
-      'has result_data': !!data.result_data,
-      'has analysis_summary': !!(data.result_data?.analysis_summary),
-      'has argument': !!(data.result_data?.argument)
-    })
     
     // ✅ 檢查是否完成
     if (data.status === 'completed' && data.result_data) {
       console.log('✅ 案件已完成，載入分析結果')
+
+      let parsedResult = data.result_data
+      if (typeof parsedResult === 'string') {
+        try {
+          parsedResult = JSON.parse(parsedResult)
+          if (typeof parsedResult === 'string') {
+            parsedResult = JSON.parse(parsedResult)
+          }
+        } catch (e) {
+          console.error('❌ 解析失敗:', e)
+        }
+      }
+  
+      data.result_data = parsedResult
       
       // 💰 確認扣款
       if (data.payment_status === 'reserved' && data.transaction_id) {
@@ -959,38 +1257,23 @@ const startPolling = () => {
         } catch (deductError) {
           console.error('❌ 扣款確認失敗:', deductError)
         }
-      } else {
-        console.log('⚠️ 跳過扣款確認:', {
-          payment_status: data.payment_status,
-          has_transaction_id: !!data.transaction_id
-        })
       }
 
-      // ✅ 修改這裡：檢查結果格式（更寬鬆的條件）
-      console.log('🔍 檢查結果格式:', {
-        'has result_data': !!data.result_data,
-        'has oa_analysis': !!(data.result_data?.oa_analysis),
-        'has citation_analyses': !!(data.result_data?.citation_analyses),
-        'has defense_argument': !!(data.result_data?.defense_argument),
-        'has argument': !!(data.result_data?.argument),
-        'has analysis_summary': !!(data.result_data?.analysis_summary)
-      })
+      const hasValidData = parsedResult && Object.keys(parsedResult).length > 0
   
-      // ✅ 關鍵修改：只要有 result_data 且 status 是 completed 就停止輪詢
-      if (data.result_data && Object.keys(data.result_data).length > 0) {
+      if (hasValidData) {
         console.log('🎉 結果格式正確，準備載入...')
-        resultData.value = data.result_data
+        resultData.value = parsedResult
         isProcessing.value = false
         clearInterval(pollTimer.value)
         pollTimer.value = null
         console.log('🎉 結果載入完成！')
-        console.log('📊 最終 resultData:', resultData.value)
       } else {
-        console.warn('⚠️ 結果格式異常（result_data 為空）:', data.result_data)
-        // ✅ 即使格式異常，也停止輪詢（避免死迴圈）
+        console.warn('⚠️ 結果格式異常')
         isProcessing.value = false
         clearInterval(pollTimer.value)
         pollTimer.value = null
+        alert('分析結果格式異常')
       }
     } 
     // ✅ 檢查是否失敗
@@ -1001,17 +1284,39 @@ const startPolling = () => {
       isProcessing.value = false
       alert('AI 分析失敗，請稍後重試。')
     }
-    // ✅ 超時處理
-    else if (pollCount >= maxPolls) {
-      console.error('⏰ 輪詢超時')
+    // 🆕 檢查是否被取消
+    else if (data.status === 'cancelled') {
+      console.log('🛑 任務已被取消')
       clearInterval(pollTimer.value)
       pollTimer.value = null
       isProcessing.value = false
-      alert('分析時間過長，請稍後重新整理頁面查看結果。')
-    } else {
-      console.log('⏳ 繼續輪詢...', { status: data.status, pollCount })
+      alert('分析已取消')
     }
-  }, 3000)
+    // ✅ 超時處理
+    else if (pollCount >= maxPolls) {
+      console.error('⏰ 輪詢超時（已等待 20 分鐘）')
+      clearInterval(pollTimer.value)
+      pollTimer.value = null
+      isProcessing.value = false
+      
+      const shouldRetry = confirm(
+        '分析時間過長（已超過 20 分鐘）。\n\n' +
+        '可能原因：\n' +
+        '1. n8n 流程啟動失敗\n' +
+        '2. 引證案下載失敗\n' +
+        '3. AI 分析異常\n\n' +
+        '是否重新啟動分析流程？\n' +
+        '（將重新呼叫 n8n，不會重複扣款）'
+      )
+      
+      if (shouldRetry) {
+        await retriggerWebhook(data)
+        startPolling()
+      }
+    } else {
+      console.log('⏳ 繼續輪詢...', { status: data.status, pollCount, elapsed: `${pollCount * 15}秒` })
+    }
+  }, 15000) // 🆕 改為 15 秒
 }
 
 // ========== 🆕 初始化邏輯 ==========
@@ -1981,6 +2286,223 @@ onUnmounted(() => {
 
   .action-info {
     flex-direction: column;
+  }
+}
+
+/* 🆕 停止按鈕樣式 */
+.action-buttons {
+  margin-top: 2rem;
+  display: flex;
+  justify-content: center;
+  gap: 1rem;
+}
+
+.btn-stop {
+  padding: 0.75rem 2rem;
+  background: linear-gradient(135deg, #ef4444 0%, #dc2626 100%);
+  color: white;
+  border: none;
+  border-radius: 8px;
+  font-size: 1rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.3s ease;
+  box-shadow: 0 4px 12px rgba(239, 68, 68, 0.3);
+}
+
+.btn-stop:hover:not(:disabled) {
+  background: linear-gradient(135deg, #dc2626 0%, #b91c1c 100%);
+  transform: translateY(-2px);
+  box-shadow: 0 6px 16px rgba(239, 68, 68, 0.4);
+}
+
+.btn-stop:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+  transform: none;
+}
+
+.btn-stop:active:not(:disabled) {
+  transform: translateY(0);
+}
+
+/* 進度步驟樣式調整 */
+.progress-steps {
+  display: flex;
+  justify-content: space-between;
+  margin: 2rem 0;
+  padding: 0 1rem;
+}
+
+.step {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 0.5rem;
+  opacity: 0.4;
+  transition: all 0.3s ease;
+}
+
+.step.active {
+  opacity: 1;
+}
+
+.step-number {
+  width: 32px;
+  height: 32px;
+  border-radius: 50%;
+  background: #e5e7eb;
+  color: #6b7280;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-weight: 600;
+  transition: all 0.3s ease;
+}
+
+.step.active .step-number {
+  background: linear-gradient(135deg, #3b82f6 0%, #2563eb 100%);
+  color: white;
+  box-shadow: 0 4px 12px rgba(59, 130, 246, 0.4);
+  animation: pulse 2s ease-in-out infinite;
+}
+
+.step-label {
+  font-size: 0.75rem;
+  color: #6b7280;
+  text-align: center;
+}
+
+.step.active .step-label {
+  color: #3b82f6;
+  font-weight: 600;
+}
+
+@keyframes pulse {
+  0%, 100% {
+    transform: scale(1);
+  }
+  50% {
+    transform: scale(1.1);
+  }
+}
+
+/* 🆕 已取消狀態樣式 */
+.cancelled-section,
+.failed-section,
+.unknown-section {
+  max-width: 600px;
+  margin: 2rem auto;
+  padding: 2rem;
+}
+
+.cancelled-card,
+.failed-card,
+.unknown-card {
+  background: white;
+  border-radius: 16px;
+  padding: 3rem;
+  text-align: center;
+  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.1);
+}
+
+.cancelled-icon,
+.failed-icon,
+.unknown-icon {
+  font-size: 4rem;
+  margin-bottom: 1rem;
+}
+
+.cancelled-card h2,
+.failed-card h2,
+.unknown-card h2 {
+  font-size: 1.5rem;
+  color: #1f2937;
+  margin-bottom: 1rem;
+}
+
+.cancelled-info,
+.failed-info,
+.unknown-info {
+  color: #6b7280;
+  margin-bottom: 2rem;
+}
+
+.cancelled-time,
+.failed-time {
+  font-size: 0.875rem;
+  color: #9ca3af;
+  margin-top: 0.5rem;
+}
+
+.error-message {
+  color: #ef4444;
+  font-size: 0.875rem;
+  margin-top: 0.5rem;
+  padding: 0.5rem;
+  background: #fee2e2;
+  border-radius: 4px;
+}
+
+.action-buttons {
+  display: flex;
+  flex-direction: column;
+  gap: 1rem;
+  margin-top: 2rem;
+}
+
+.btn-primary,
+.btn-secondary,
+.btn-outline {
+  padding: 0.75rem 2rem;
+  border-radius: 8px;
+  font-size: 1rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.3s ease;
+  border: none;
+}
+
+.btn-primary {
+  background: linear-gradient(135deg, #3b82f6 0%, #2563eb 100%);
+  color: white;
+  box-shadow: 0 4px 12px rgba(59, 130, 246, 0.3);
+}
+
+.btn-primary:hover {
+  background: linear-gradient(135deg, #2563eb 0%, #1d4ed8 100%);
+  transform: translateY(-2px);
+  box-shadow: 0 6px 16px rgba(59, 130, 246, 0.4);
+}
+
+.btn-secondary {
+  background: linear-gradient(135deg, #ef4444 0%, #dc2626 100%);
+  color: white;
+  box-shadow: 0 4px 12px rgba(239, 68, 68, 0.3);
+}
+
+.btn-secondary:hover {
+  background: linear-gradient(135deg, #dc2626 0%, #b91c1c 100%);
+  transform: translateY(-2px);
+  box-shadow: 0 6px 16px rgba(239, 68, 68, 0.4);
+}
+
+.btn-outline {
+  background: white;
+  color: #3b82f6;
+  border: 2px solid #3b82f6;
+}
+
+.btn-outline:hover {
+  background: #eff6ff;
+  transform: translateY(-2px);
+}
+
+/* 響應式設計 */
+@media (min-width: 640px) {
+  .action-buttons {
+    flex-direction: row;
+    justify-content: center;
   }
 }
 </style>
