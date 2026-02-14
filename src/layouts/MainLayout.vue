@@ -51,7 +51,11 @@
         <router-link to="/services/invalidation-workflow" class="nav-item">
           <span class="icon">⚔️</span> 專利舉發
         </router-link>
-        
+
+        <router-link to="/services/translation/workflow" class="nav-item">
+          <span class="icon">🌐</span> 專利翻譯
+        </router-link>
+
         <router-link to="/services/case-management" class="nav-item">
           <span class="icon">🗂️</span> 專利案件管理
         </router-link>

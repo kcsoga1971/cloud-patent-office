@@ -322,6 +322,28 @@ const routes = [
         }
       },
 
+      // ========== 🆕 8. 專利翻譯服務 ==========
+      // 專利翻譯 - 工作流程列表
+      {
+        path: 'services/translation/workflow',
+        name: 'translation-workflow',
+        component: () => import('../views/services/PatentTranslationWorkflow.vue'),
+        meta: {
+          requiresAuth: true,
+          title: '專利翻譯記錄'
+        }
+      },
+      // 專利翻譯 - 執行介面
+      {
+        path: 'services/translation/:id?', // 加入 :id? 允許帶入過去的紀錄ID
+        name: 'translation',
+        component: () => import('../views/services/PatentTranslation.vue'),
+        meta: {
+          requiresAuth: true,
+          title: '專利翻譯服務'
+        }
+      },
+
       // ========== 知識庫 ==========
       {
         path: 'knowledge',
