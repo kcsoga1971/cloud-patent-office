@@ -219,16 +219,72 @@ const executeJob = async () => {
     if (jobErr) throw jobErr
     jobId.value = job.id
 
-    // 3. 呼叫 n8n
-    fetch(import.meta.env.VITE_N8N_WEBHOOK_VALUATION_URL, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ job_id: job.id, transaction_id: transactionId, ...inputData.value })
-    })
-
+    // 3. 呼叫 Valuation API (直接)
     isInit.value = false
     isProcessing.value = true
-    startPolling()
+
+    const apiUrl = import.meta.env.VITE_VALUATION_API_URL || 'https://cpo.twcio.com/valuation-api/api/v1/analyze_valuation'
+    const apiRes = await fetch(apiUrl, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        patent_number: inputData.value.patent_number,
+        market_size: Number(inputData.value.market_size),
+        stage: inputData.value.stage
+      })
+    })
+    const apiData = await apiRes.json()
+    
+    if (!apiData.success) throw new Error(apiData.message || '鑑價分析失敗')
+
+    const d = apiData.data
+    // 轉換為前端顯示格式
+    const costVal = d.cost_method?.total_cost_valuation || 0
+    const marketVal = d.market_method?.market_valuation || 0
+    const incomeVal = d.income_method?.income_valuation || 0
+    const avgVal = d.weighted_average_valuation || ((costVal + marketVal + incomeVal) / 3)
+    const minVal = Math.min(costVal, marketVal, incomeVal)
+    const maxVal = Math.max(costVal, marketVal, incomeVal)
+
+    const mappedResult = {
+      valuation_model: {
+        estimated_value_min: `$${minVal.toLocaleString('en-US', { maximumFractionDigits: 0 })}`,
+        estimated_value_max: `$${maxVal.toLocaleString('en-US', { maximumFractionDigits: 0 })}`,
+        estimated_value_avg: `$${avgVal.toLocaleString('en-US', { maximumFractionDigits: 0 })}`,
+        market_size_input: `$${Number(inputData.value.market_size).toLocaleString('en-US')}`,
+        royalty_rate_range: `${(d.market_method?.adjusted_royalty_rate || 5).toFixed(1)}%`,
+        strength_factor: d.strength_multiplier?.toFixed(2) || '1.00',
+      },
+      qualitative_analysis: {
+        legal_score: Math.round((d.legal_analysis?.strength_score || 0.5) * 100),
+        tech_score: Math.round((d.confidence_percentage || 50)),
+        commercial_score: Math.round((d.market_analysis?.growth_rate || 5) * 10),
+        legal_analysis: d.legal_analysis?.explanation || '',
+        tech_analysis: d.market_analysis?.explanation || '',
+      },
+      cost_method: d.cost_method,
+      market_method: d.market_method,
+      income_method: d.income_method,
+      valuation_summary: d.valuation_summary,
+      confidence_level: d.confidence_level,
+      confidence_percentage: d.confidence_percentage,
+      methodology_explanation: d.methodology_explanation,
+    }
+
+    // 存入 DB
+    await supabase.from('saas_jobs').update({
+      status: 'completed',
+      result_data: mappedResult,
+      payment_status: 'completed'
+    }).eq('id', job.id)
+
+    // 確認扣款
+    await supabase.rpc('confirm_deduction', { p_transaction_id: transactionId })
+    userStore.fetchUser()
+
+    resultData.value = mappedResult
+    jobStatus.value = 'completed'
+    isProcessing.value = false
 
   } catch (err) {
     console.error(err)
