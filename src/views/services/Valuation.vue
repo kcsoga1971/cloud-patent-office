@@ -304,8 +304,10 @@ const executeJob = async (isRetry = false) => {
         p_model_name: 'Valuation-Engine',
         p_job_id: null, p_project_id: null
       })
-      if (resErr || !reserve.success) throw new Error('扣款失敗')
+      console.log('📦 reserve_credits response:', JSON.stringify(reserve), 'error:', resErr)
+      if (resErr || !reserve?.success) throw new Error(`扣款失敗: ${resErr?.message || JSON.stringify(reserve)}`)
       transactionId = reserve.transaction_id
+      if (!transactionId) throw new Error('扣款成功但未取得 transaction_id')
 
       // 2. 建立 Job
       const { data: newJob, error: jobErr } = await supabase.from('saas_jobs').insert({
@@ -317,7 +319,9 @@ const executeJob = async (isRetry = false) => {
         credits_deducted: COST,
         input_data: { ...inputData.value }
       }).select().single()
-      if (jobErr) throw jobErr
+      console.log('📦 saas_jobs insert:', JSON.stringify(newJob), 'error:', jobErr)
+      if (jobErr) throw new Error(`建立案件失敗: ${jobErr.message}`)
+      if (!newJob) throw new Error('建立案件失敗: RLS 阻擋，請檢查 saas_jobs 權限')
       job = newJob
       jobId.value = job.id
     } else {
