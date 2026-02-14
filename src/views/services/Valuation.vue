@@ -317,8 +317,15 @@ const startPolling = () => {
 
 const handleDownloadReport = async () => {
   if (!resultData.value) return
-  // TODO: 實作 docx 生成邏輯
-  alert('報告下載功能即將上線') 
+  
+  try {
+    console.log('🏗️ 開始生成鑑價報告...')
+    await generateValuationReport(inputData.value.patent_number, resultData.value)
+    console.log('✅ 鑑價報告下載完成')
+  } catch (err) {
+    console.error('❌ 報告生成失敗:', err)
+    alert('報告生成失敗: ' + err.message)
+  }
 }
 
 onMounted(() => { if (jobId.value) { isProcessing.value = true; startPolling() } })

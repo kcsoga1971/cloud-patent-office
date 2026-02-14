@@ -1758,6 +1758,38 @@ const uploadToStorage = async (userId, jobId, filename, blob) => {
     }
   }
 
+// ========================================
+// 🆕 新增：生成專利鑑價報告 - Enhancement 2
+// ========================================
+const generateValuationReport = async (patentNumber, resultData) => {
+  if (!resultData) {
+    throw new Error('缺少鑑價結果資料')
+  }
+
+  isGenerating.value = true
+  error.value = null
+
+  try {
+    console.log('🏗️ 開始生成鑑價報告...', patentNumber)
+    
+    const doc = createValuationReportDocx(patentNumber, resultData)
+    const buffer = await Packer.toBuffer(doc)
+    
+    const filename = `專利鑑價預分析報告_${patentNumber}_${new Date().toISOString().split('T')[0]}.docx`
+    saveAs(new Blob([buffer], { type: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document' }), filename)
+    
+    console.log('✅ 鑑價報告生成完成:', filename)
+    return { success: true, filename }
+    
+  } catch (err) {
+    console.error('❌ 鑑價報告生成失敗:', err)
+    error.value = err.message
+    throw err
+  } finally {
+    isGenerating.value = false
+  }
+}
+
   return {
     isGenerating,
     error,
@@ -1766,7 +1798,8 @@ const uploadToStorage = async (userId, jobId, filename, blob) => {
     generateDefenseDocs, // 🆕 新增
     generateDesignAroundReport,
     generateInfringementReport, // <--- ✅ 新增這行
-    generateAnalysisReport
+    generateAnalysisReport,
+    generateValuationReport // 🆕 新增鑑價報告
   }
 }
 
@@ -2430,6 +2463,499 @@ const createInvalidationBriefDocx = ({
         alignment: AlignmentType.CENTER,
         children: [
           new TextRun({ children: [PageNumber.CURRENT], font: fontStyle })
+        ]
+      })
+    ]
+  })
+
+  return new Document({
+    sections: [{
+      properties: {
+        page: { margin: pageMargins }
+      },
+      footers: { default: footer },
+      children: children
+    }]
+  })
+}
+
+// ========================================
+// 🆕 新增：建立專利鑑價報告 Docx - Enhancement 2
+// ========================================
+const createValuationReportDocx = (patentNumber, resultData) => {
+  const fontStyle = '微軟正黑體'
+  const pageMargins = {
+    top: convertInchesToTwip(1),
+    right: convertInchesToTwip(1), 
+    bottom: convertInchesToTwip(1),
+    left: convertInchesToTwip(1)
+  }
+
+  const children = []
+
+  // ========== 標題 ==========
+  children.push(
+    new Paragraph({
+      alignment: AlignmentType.CENTER,
+      children: [
+        new TextRun({
+          text: '專利鑑價預分析報告',
+          font: fontStyle,
+          size: 32,
+          bold: true,
+          color: '1f4e79'
+        })
+      ],
+      spacing: { after: 360 }
+    })
+  )
+
+  // ========== 專利資訊 ==========
+  children.push(
+    new Paragraph({
+      children: [
+        new TextRun({
+          text: `專利號碼：${patentNumber}`,
+          font: fontStyle,
+          size: 24,
+          bold: true
+        })
+      ],
+      spacing: { after: 120 }
+    })
+  )
+
+  children.push(
+    new Paragraph({
+      children: [
+        new TextRun({
+          text: `報告日期：${new Date().toLocaleDateString('zh-TW')}`,
+          font: fontStyle,
+          size: 24
+        })
+      ],
+      spacing: { after: 240 }
+    })
+  )
+
+  // ========== 免責聲明 ==========
+  children.push(
+    new Paragraph({
+      text: '免責聲明',
+      heading: HeadingLevel.HEADING_1,
+      spacing: { before: 240, after: 120 }
+    })
+  )
+
+  children.push(
+    new Paragraph({
+      children: [
+        new TextRun({
+          text: '本報告為 AI 輔助之「價值預分析」，僅供內部決策、技術盤點或初步交易參考。',
+          font: fontStyle,
+          size: 22,
+          bold: true,
+          color: 'd32f2f'
+        }),
+        new TextRun({
+          text: '本報告不具備會計師或認證鑑價師簽證效力，不可用於正式法庭訴訟、稅務申報或銀行融資抵押。',
+          font: fontStyle,
+          size: 22,
+          color: 'd32f2f'
+        })
+      ],
+      spacing: { after: 240 }
+    })
+  )
+
+  // ========== 估值摘要 ==========
+  children.push(
+    new Paragraph({
+      text: '估值摘要',
+      heading: HeadingLevel.HEADING_1,
+      spacing: { before: 240, after: 120 }
+    })
+  )
+
+  const valuationModel = resultData.valuation_model || {}
+  children.push(
+    new Paragraph({
+      children: [
+        new TextRun({
+          text: '預估專利價值區間：',
+          font: fontStyle,
+          size: 24,
+          bold: true
+        }),
+        new TextRun({
+          text: `${valuationModel.estimated_value_min || 'N/A'} ~ ${valuationModel.estimated_value_max || 'N/A'}`,
+          font: fontStyle,
+          size: 26,
+          bold: true,
+          color: '1976d2'
+        })
+      ],
+      spacing: { after: 120 }
+    })
+  )
+
+  children.push(
+    new Paragraph({
+      children: [
+        new TextRun({
+          text: '平均估值：',
+          font: fontStyle,
+          size: 24,
+          bold: true
+        }),
+        new TextRun({
+          text: valuationModel.estimated_value_avg || 'N/A',
+          font: fontStyle,
+          size: 24,
+          color: '388e3c'
+        })
+      ],
+      spacing: { after: 120 }
+    })
+  )
+
+  children.push(
+    new Paragraph({
+      children: [
+        new TextRun({
+          text: '計算基礎：',
+          font: fontStyle,
+          size: 22,
+          bold: true
+        }),
+        new TextRun({
+          text: `年營收 ${valuationModel.market_size_input || 'N/A'} × 費率 ${valuationModel.royalty_rate_range || 'N/A'} × 強度係數 ${valuationModel.strength_factor || 'N/A'}`,
+          font: fontStyle,
+          size: 22
+        })
+      ],
+      spacing: { after: 240 }
+    })
+  )
+
+  // ========== 三種方法詳細說明 ==========
+  children.push(
+    new Paragraph({
+      text: '三種方法詳細說明',
+      heading: HeadingLevel.HEADING_1,
+      spacing: { before: 240, after: 120 }
+    })
+  )
+
+  // 成本法
+  children.push(
+    new Paragraph({
+      text: '1. 成本法 (Cost Method)',
+      heading: HeadingLevel.HEADING_2,
+      spacing: { before: 180, after: 120 }
+    })
+  )
+
+  const costMethod = resultData.cost_method || {}
+  children.push(
+    new Paragraph({
+      children: [
+        new TextRun({
+          text: `估值結果：${costMethod.total_cost_valuation ? '$' + costMethod.total_cost_valuation.toLocaleString('en-US', { maximumFractionDigits: 0 }) : 'N/A'}`,
+          font: fontStyle,
+          size: 22,
+          bold: true
+        })
+      ],
+      spacing: { after: 120 }
+    })
+  )
+
+  children.push(
+    new Paragraph({
+      children: [
+        new TextRun({
+          text: costMethod.explanation || '說明資料不可用',
+          font: fontStyle,
+          size: 22
+        })
+      ],
+      spacing: { after: 180 }
+    })
+  )
+
+  // 市場法
+  children.push(
+    new Paragraph({
+      text: '2. 市場法 (Market Method)',
+      heading: HeadingLevel.HEADING_2,
+      spacing: { before: 180, after: 120 }
+    })
+  )
+
+  const marketMethod = resultData.market_method || {}
+  children.push(
+    new Paragraph({
+      children: [
+        new TextRun({
+          text: `估值結果：${marketMethod.market_valuation ? '$' + marketMethod.market_valuation.toLocaleString('en-US', { maximumFractionDigits: 0 }) : 'N/A'}`,
+          font: fontStyle,
+          size: 22,
+          bold: true
+        })
+      ],
+      spacing: { after: 120 }
+    })
+  )
+
+  children.push(
+    new Paragraph({
+      children: [
+        new TextRun({
+          text: marketMethod.explanation || '說明資料不可用',
+          font: fontStyle,
+          size: 22
+        })
+      ],
+      spacing: { after: 180 }
+    })
+  )
+
+  // 收益法
+  children.push(
+    new Paragraph({
+      text: '3. 收益法 (Income Method)',
+      heading: HeadingLevel.HEADING_2,
+      spacing: { before: 180, after: 120 }
+    })
+  )
+
+  const incomeMethod = resultData.income_method || {}
+  children.push(
+    new Paragraph({
+      children: [
+        new TextRun({
+          text: `估值結果：${incomeMethod.income_valuation ? '$' + incomeMethod.income_valuation.toLocaleString('en-US', { maximumFractionDigits: 0 }) : 'N/A'}`,
+          font: fontStyle,
+          size: 22,
+          bold: true
+        })
+      ],
+      spacing: { after: 120 }
+    })
+  )
+
+  children.push(
+    new Paragraph({
+      children: [
+        new TextRun({
+          text: incomeMethod.explanation || '說明資料不可用',
+          font: fontStyle,
+          size: 22
+        })
+      ],
+      spacing: { after: 240 }
+    })
+  )
+
+  // ========== 質化分析 ==========
+  children.push(
+    new Paragraph({
+      text: '質化分析',
+      heading: HeadingLevel.HEADING_1,
+      spacing: { before: 240, after: 120 }
+    })
+  )
+
+  const qualitativeAnalysis = resultData.qualitative_analysis || {}
+  
+  children.push(
+    new Paragraph({
+      children: [
+        new TextRun({
+          text: `法律強度分數：${qualitativeAnalysis.legal_score || 'N/A'}/100`,
+          font: fontStyle,
+          size: 22,
+          bold: true
+        })
+      ],
+      spacing: { after: 120 }
+    })
+  )
+
+  children.push(
+    new Paragraph({
+      children: [
+        new TextRun({
+          text: `技術價值分數：${qualitativeAnalysis.tech_score || 'N/A'}/100`,
+          font: fontStyle,
+          size: 22,
+          bold: true
+        })
+      ],
+      spacing: { after: 120 }
+    })
+  )
+
+  children.push(
+    new Paragraph({
+      children: [
+        new TextRun({
+          text: `商業潛力分數：${qualitativeAnalysis.commercial_score || 'N/A'}/100`,
+          font: fontStyle,
+          size: 22,
+          bold: true
+        })
+      ],
+      spacing: { after: 180 }
+    })
+  )
+
+  // 法律面分析
+  children.push(
+    new Paragraph({
+      text: '法律面分析',
+      heading: HeadingLevel.HEADING_2,
+      spacing: { before: 180, after: 120 }
+    })
+  )
+
+  children.push(
+    new Paragraph({
+      children: [
+        new TextRun({
+          text: qualitativeAnalysis.legal_analysis || '法律面分析資料不可用',
+          font: fontStyle,
+          size: 22
+        })
+      ],
+      spacing: { after: 180 }
+    })
+  )
+
+  // 技術面分析
+  children.push(
+    new Paragraph({
+      text: '技術面分析',
+      heading: HeadingLevel.HEADING_2,
+      spacing: { before: 180, after: 120 }
+    })
+  )
+
+  children.push(
+    new Paragraph({
+      children: [
+        new TextRun({
+          text: qualitativeAnalysis.tech_analysis || '技術面分析資料不可用',
+          font: fontStyle,
+          size: 22
+        })
+      ],
+      spacing: { after: 240 }
+    })
+  )
+
+  // ========== 方法論說明 ==========
+  children.push(
+    new Paragraph({
+      text: '方法論說明',
+      heading: HeadingLevel.HEADING_1,
+      spacing: { before: 240, after: 120 }
+    })
+  )
+
+  children.push(
+    new Paragraph({
+      children: [
+        new TextRun({
+          text: resultData.methodology_explanation || '方法論說明不可用',
+          font: fontStyle,
+          size: 22
+        })
+      ],
+      spacing: { after: 240 }
+    })
+  )
+
+  // ========== 信心水準 ==========
+  children.push(
+    new Paragraph({
+      text: '信心水準',
+      heading: HeadingLevel.HEADING_1,
+      spacing: { before: 240, after: 120 }
+    })
+  )
+
+  children.push(
+    new Paragraph({
+      children: [
+        new TextRun({
+          text: `信心等級：${resultData.confidence_level || 'N/A'}`,
+          font: fontStyle,
+          size: 24,
+          bold: true
+        })
+      ],
+      spacing: { after: 120 }
+    })
+  )
+
+  children.push(
+    new Paragraph({
+      children: [
+        new TextRun({
+          text: `信心百分比：${resultData.confidence_percentage ? resultData.confidence_percentage.toFixed(1) + '%' : 'N/A'}`,
+          font: fontStyle,
+          size: 22
+        })
+      ],
+      spacing: { after: 240 }
+    })
+  )
+
+  // ========== 總結 ==========
+  children.push(
+    new Paragraph({
+      text: '總結',
+      heading: HeadingLevel.HEADING_1,
+      spacing: { before: 240, after: 120 }
+    })
+  )
+
+  children.push(
+    new Paragraph({
+      children: [
+        new TextRun({
+          text: resultData.valuation_summary || '總結資料不可用',
+          font: fontStyle,
+          size: 22
+        })
+      ],
+      spacing: { after: 240 }
+    })
+  )
+
+  // ========== 建立文件 ==========
+  const footer = new Footer({
+    children: [
+      new Paragraph({
+        alignment: AlignmentType.CENTER,
+        children: [
+          new TextRun({
+            text: '第 ',
+            font: fontStyle,
+            size: 20
+          }),
+          new TextRun({
+            children: [PageNumber.CURRENT],
+            font: fontStyle,
+            size: 20
+          }),
+          new TextRun({
+            text: ' 頁',
+            font: fontStyle,
+            size: 20
+          })
         ]
       })
     ]
