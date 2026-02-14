@@ -1773,10 +1773,10 @@ const generateValuationReport = async (patentNumber, resultData) => {
     console.log('🏗️ 開始生成鑑價報告...', patentNumber)
     
     const doc = createValuationReportDocx(patentNumber, resultData)
-    const buffer = await Packer.toBuffer(doc)
+    const blob = await Packer.toBlob(doc)
     
     const filename = `專利鑑價預分析報告_${patentNumber}_${new Date().toISOString().split('T')[0]}.docx`
-    saveAs(new Blob([buffer], { type: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document' }), filename)
+    saveAs(blob, filename)
     
     console.log('✅ 鑑價報告生成完成:', filename)
     return { success: true, filename }
