@@ -283,6 +283,8 @@ const handleStartClick = () => {
 }
 
 const executeJob = async (isRetry = false) => {
+  // If no jobId exists, force new job creation (not retry)
+  if (!jobId.value) isRetry = false
   if (!isRetry) {
     showConfirmModal.value = false
   }
@@ -327,6 +329,7 @@ const executeJob = async (isRetry = false) => {
     } else {
       // For retries, get existing job
       const { data: existingJob } = await supabase.from('saas_jobs').select('*').eq('id', jobId.value).single()
+      if (!existingJob) throw new Error('找不到原始案件，請重新建立')
       job = existingJob
       transactionId = job.transaction_id
     }
@@ -448,6 +451,7 @@ const startPolling = () => {
     if (!jobId.value) return
     
     const { data } = await supabase.from('saas_jobs').select('*').eq('id', jobId.value).single()
+    if (!data) { clearInterval(pollTimer.value); return }
     jobStatus.value = data.status
     
     // Check for timeout (2 minutes)
