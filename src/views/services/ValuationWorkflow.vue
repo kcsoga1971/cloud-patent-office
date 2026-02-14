@@ -13,6 +13,9 @@ const userStore = useUserStore()
 const allJobs = ref([])
 const isLoading = ref(true)
 const activeFilter = ref('all')
+const showDeleteModal = ref(false)
+const deleteJobId = ref(null)
+const isDeleting = ref(false)
 
 onMounted(async () => {
   await loadJobs()
@@ -84,6 +87,56 @@ const getValuationResult = (job) => {
   }
   
   return data.valuation_result?.estimated_value_avg || null
+}
+
+const confirmDeleteJob = (jobId) => {
+  deleteJobId.value = jobId
+  showDeleteModal.value = true
+}
+
+const deleteJob = async () => {
+  if (!deleteJobId.value) return
+  
+  isDeleting.value = true
+  try {
+    const job = allJobs.value.find(j => j.id === deleteJobId.value)
+    if (!job) throw new Error('找不到該案件')
+
+    // If job is pending/failed and payment is reserved, refund credits
+    if ((job.status === 'pending' || job.status === 'failed') && 
+        job.payment_status === 'reserved' && 
+        job.transaction_id) {
+      console.log('🔄 退費中...')
+      const { error: refundError } = await supabase.rpc('refund_credits', {
+        p_transaction_id: job.transaction_id,
+        p_reason: '用戶刪除案件'
+      })
+      if (refundError) {
+        console.warn('退費失敗:', refundError)
+        // Continue with deletion even if refund fails
+      }
+    }
+
+    // Delete job from database
+    const { error } = await supabase
+      .from('saas_jobs')
+      .delete()
+      .eq('id', deleteJobId.value)
+    
+    if (error) throw error
+
+    // Refresh the list
+    await loadJobs()
+    showDeleteModal.value = false
+    deleteJobId.value = null
+    
+    console.log('✅ 案件刪除成功')
+  } catch (err) {
+    console.error('❌ 刪除失敗:', err)
+    alert('刪除失敗: ' + err.message)
+  } finally {
+    isDeleting.value = false
+  }
 }
 </script>
 
@@ -169,9 +222,18 @@ const getValuationResult = (job) => {
             <div class="job-id-badge">
               #{{ job.id.slice(0, 8) }}
             </div>
-            <div class="status-badge" :class="getStatusInfo(job).class">
-              <span class="status-icon">{{ getStatusInfo(job).icon }}</span>
-              <span class="status-text">{{ getStatusInfo(job).label }}</span>
+            <div class="card-header-right">
+              <div class="status-badge" :class="getStatusInfo(job).class">
+                <span class="status-icon">{{ getStatusInfo(job).icon }}</span>
+                <span class="status-text">{{ getStatusInfo(job).label }}</span>
+              </div>
+              <button 
+                @click.stop="confirmDeleteJob(job.id)" 
+                class="btn-delete"
+                title="刪除案件"
+              >
+                🗑️
+              </button>
             </div>
           </div>
           
@@ -207,6 +269,30 @@ const getValuationResult = (job) => {
 
     <!-- ServiceTips -->
     <ServiceTips type="valuation" />
+
+    <!-- Delete Confirmation Modal -->
+    <div v-if="showDeleteModal" class="modal-overlay">
+      <div class="modal-card">
+        <div class="modal-header">
+          <h3>🗑️ 刪除確認</h3>
+          <button @click="showDeleteModal = false" class="btn-close">×</button>
+        </div>
+        <div class="modal-body">
+          <p>確定要刪除此鑑價案件嗎？</p>
+          <p class="warning-text">此操作無法復原。如果是未完成的案件且已預付點數，系統將自動退費。</p>
+        </div>
+        <div class="modal-footer">
+          <button @click="showDeleteModal = false" class="btn-cancel">取消</button>
+          <button 
+            @click="deleteJob" 
+            :disabled="isDeleting"
+            class="btn-confirm-delete"
+          >
+            {{ isDeleting ? '刪除中...' : '確認刪除' }}
+          </button>
+        </div>
+      </div>
+    </div>
   </div>
 </template>
 
@@ -454,6 +540,12 @@ const getValuationResult = (job) => {
   margin-bottom: 16px;
 }
 
+.card-header-right {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
 .job-id-badge {
   font-size: 12px;
   font-family: 'Monaco', 'Courier New', monospace;
@@ -546,6 +638,143 @@ const getValuationResult = (job) => {
 
 .btn-view:hover {
   color: #5568d3;
+}
+
+.btn-delete {
+  background: none;
+  border: none;
+  font-size: 16px;
+  cursor: pointer;
+  padding: 4px;
+  border-radius: 4px;
+  opacity: 0.7;
+  transition: all 0.3s;
+}
+
+.btn-delete:hover {
+  opacity: 1;
+  background: #fee2e2;
+}
+
+/* Delete Modal Styles */
+.modal-overlay {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background: rgba(0, 0, 0, 0.5);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 1000;
+}
+
+.modal-card {
+  background: white;
+  border-radius: 16px;
+  padding: 24px;
+  width: 90%;
+  max-width: 400px;
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.2);
+}
+
+.modal-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 16px;
+  padding-bottom: 12px;
+  border-bottom: 2px solid #f1f5f9;
+}
+
+.modal-header h3 {
+  font-size: 18px;
+  font-weight: 700;
+  color: #1e293b;
+  margin: 0;
+}
+
+.btn-close {
+  background: none;
+  border: none;
+  font-size: 24px;
+  cursor: pointer;
+  color: #64748b;
+  padding: 0;
+  width: 32px;
+  height: 32px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 50%;
+  transition: all 0.3s;
+}
+
+.btn-close:hover {
+  background: #f1f5f9;
+  color: #1e293b;
+}
+
+.modal-body {
+  margin-bottom: 24px;
+}
+
+.modal-body p {
+  margin: 0 0 12px 0;
+  color: #1e293b;
+  line-height: 1.5;
+}
+
+.warning-text {
+  font-size: 14px;
+  color: #dc2626;
+  background: #fef2f2;
+  padding: 12px;
+  border-radius: 8px;
+  border: 1px solid #fecaca;
+}
+
+.modal-footer {
+  display: flex;
+  gap: 12px;
+  justify-content: flex-end;
+}
+
+.btn-cancel {
+  padding: 12px 24px;
+  background: #f8fafc;
+  border: 1px solid #e2e8f0;
+  border-radius: 8px;
+  color: #64748b;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.3s;
+}
+
+.btn-cancel:hover {
+  background: #f1f5f9;
+  border-color: #cbd5e1;
+}
+
+.btn-confirm-delete {
+  padding: 12px 24px;
+  background: #dc2626;
+  border: none;
+  border-radius: 8px;
+  color: white;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.3s;
+}
+
+.btn-confirm-delete:hover {
+  background: #b91c1c;
+}
+
+.btn-confirm-delete:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
 }
 
 /* ========== 空狀態 ========== */
