@@ -448,6 +448,7 @@ const executeJob = async (isRetry = false) => {
       confidence_level: d.confidence_level,
       confidence_percentage: d.confidence_percentage,
       methodology_explanation: d.methodology_explanation,
+      research_data: apiData.research_data || null,
     }
 
     // 存入 DB
