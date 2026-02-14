@@ -161,6 +161,62 @@
         </div>
       </div>
 
+      <!-- Research Data Sources Card -->
+      <div v-if="resultData.research_data" class="card research-card">
+        <h3>📚 研究資料來源</h3>
+        
+        <div class="research-summary">
+          <div class="confidence-badge" :class="resultData.research_data.data_confidence.toLowerCase()">
+            <span class="badge-icon">{{ confidenceBadgeIcon(resultData.research_data.data_confidence) }}</span>
+            <span class="badge-text">數據信心度: {{ confidenceBadgeText(resultData.research_data.data_confidence) }}</span>
+          </div>
+          
+          <div class="research-text">
+            <p>{{ resultData.research_data.research_summary }}</p>
+          </div>
+        </div>
+
+        <div v-if="resultData.research_data.comparable_deals?.length" class="comparable-deals">
+          <h4>💼 可比較交易案例</h4>
+          <ul class="deal-list">
+            <li v-for="(deal, index) in resultData.research_data.comparable_deals.slice(0, 5)" :key="index" class="deal-item">
+              <strong>{{ deal.description }}</strong>
+              <span v-if="deal.value" class="deal-value">{{ deal.value }}</span>
+              <div v-if="deal.source" class="deal-source">來源: {{ deal.source }}</div>
+            </li>
+          </ul>
+        </div>
+
+        <div v-if="resultData.research_data.litigation_references?.length" class="litigation-refs">
+          <h4>⚖️ 相關訴訟參考</h4>
+          <ul class="litigation-list">
+            <li v-for="(litigation, index) in resultData.research_data.litigation_references.slice(0, 3)" :key="index" class="litigation-item">
+              <strong>{{ litigation.case }}</strong>
+              <span v-if="litigation.damages" class="litigation-damages">損害賠償: {{ litigation.damages }}</span>
+              <div v-if="litigation.source" class="litigation-source">來源: {{ litigation.source }}</div>
+            </li>
+          </ul>
+        </div>
+
+        <div v-if="resultData.research_data.sources?.length" class="sources-section">
+          <h4>🔗 參考資料來源</h4>
+          <div class="sources-grid">
+            <a 
+              v-for="(source, index) in resultData.research_data.sources.slice(0, 8)" 
+              :key="index" 
+              :href="source" 
+              target="_blank" 
+              rel="noopener noreferrer"
+              class="source-link"
+            >
+              <span class="source-icon">🌐</span>
+              <span class="source-text">{{ getDomainName(source) }}</span>
+              <span class="external-icon">↗</span>
+            </a>
+          </div>
+        </div>
+      </div>
+
       <div class="actions">
         <button class="btn-secondary" @click="handleDownloadReport">📥 下載鑑價報告 (Word)</button>
         <button @click="router.push('/services/valuation-workflow')" class="btn-text">返回列表</button>
@@ -539,6 +595,32 @@ const handleDownloadReport = async () => {
   }
 }
 
+const confidenceBadgeIcon = (confidence) => {
+  switch (confidence) {
+    case 'High': return '🟢'
+    case 'Medium': return '🟡'
+    case 'Low': return '🔴'
+    default: return '⚪'
+  }
+}
+
+const confidenceBadgeText = (confidence) => {
+  switch (confidence) {
+    case 'High': return '高'
+    case 'Medium': return '中'
+    case 'Low': return '低'
+    default: return '未知'
+  }
+}
+
+const getDomainName = (url) => {
+  try {
+    return new URL(url).hostname.replace('www.', '')
+  } catch {
+    return url.length > 40 ? url.substring(0, 40) + '...' : url
+  }
+}
+
 onMounted(() => { 
   if (jobId.value) { 
     isProcessing.value = true
@@ -723,5 +805,144 @@ onUnmounted(() => {
 .btn-back-to-list:hover {
   background: #f1f5f9;
   border-color: #cbd5e1;
+}
+
+/* Research Data Card Styles */
+.research-card {
+  border-left: 4px solid #2196F3;
+}
+
+.research-summary {
+  margin-bottom: 20px;
+}
+
+.confidence-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 12px;
+  border-radius: 16px;
+  font-size: 0.85rem;
+  font-weight: 600;
+  margin-bottom: 15px;
+}
+
+.confidence-badge.high {
+  background-color: #d4edda;
+  color: #155724;
+  border: 1px solid #c3e6cb;
+}
+
+.confidence-badge.medium {
+  background-color: #fff3cd;
+  color: #856404;
+  border: 1px solid #ffeeba;
+}
+
+.confidence-badge.low {
+  background-color: #f8d7da;
+  color: #721c24;
+  border: 1px solid #f5c6cb;
+}
+
+.research-text {
+  color: #555;
+  line-height: 1.6;
+  margin-bottom: 15px;
+}
+
+.comparable-deals, .litigation-refs {
+  margin-bottom: 20px;
+}
+
+.comparable-deals h4, .litigation-refs h4 {
+  color: #333;
+  margin-bottom: 10px;
+  font-size: 1rem;
+}
+
+.deal-list, .litigation-list {
+  list-style: none;
+  padding: 0;
+  margin: 0;
+}
+
+.deal-item, .litigation-item {
+  background: #f8f9fa;
+  border: 1px solid #e9ecef;
+  border-radius: 8px;
+  padding: 12px 15px;
+  margin-bottom: 8px;
+  transition: background-color 0.2s;
+}
+
+.deal-item:hover, .litigation-item:hover {
+  background: #e9ecef;
+}
+
+.deal-value, .litigation-damages {
+  display: block;
+  color: #28a745;
+  font-weight: 600;
+  margin-top: 4px;
+}
+
+.deal-source, .litigation-source {
+  font-size: 0.8rem;
+  color: #6c757d;
+  margin-top: 4px;
+}
+
+.sources-section {
+  margin-top: 20px;
+}
+
+.sources-section h4 {
+  color: #333;
+  margin-bottom: 12px;
+  font-size: 1rem;
+}
+
+.sources-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+  gap: 10px;
+}
+
+.source-link {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 12px;
+  background: #f8f9fa;
+  border: 1px solid #e9ecef;
+  border-radius: 6px;
+  text-decoration: none;
+  color: #495057;
+  font-size: 0.85rem;
+  transition: all 0.2s;
+}
+
+.source-link:hover {
+  background: #e9ecef;
+  color: #2196F3;
+  transform: translateY(-1px);
+}
+
+.source-icon {
+  flex-shrink: 0;
+}
+
+.source-text {
+  flex-grow: 1;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.external-icon {
+  flex-shrink: 0;
+  color: #6c757d;
+  font-size: 0.7rem;
 }
 </style>

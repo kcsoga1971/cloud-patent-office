@@ -2913,6 +2913,216 @@ const createValuationReportDocx = (patentNumber, resultData) => {
     })
   )
 
+  // ========== 市場研究資料 ==========
+  if (resultData.research_data) {
+    children.push(
+      new Paragraph({
+        text: '市場研究資料',
+        heading: HeadingLevel.HEADING_1,
+        spacing: { before: 240, after: 120 }
+      })
+    )
+
+    const researchData = resultData.research_data
+
+    // 研究摘要
+    if (researchData.research_summary) {
+      children.push(
+        new Paragraph({
+          text: '研究摘要',
+          heading: HeadingLevel.HEADING_2,
+          spacing: { before: 180, after: 120 }
+        })
+      )
+
+      children.push(
+        new Paragraph({
+          children: [
+            new TextRun({
+              text: researchData.research_summary,
+              font: fontStyle,
+              size: 22
+            })
+          ],
+          spacing: { after: 120 }
+        })
+      )
+
+      children.push(
+        new Paragraph({
+          children: [
+            new TextRun({
+              text: `數據信心度：${researchData.data_confidence || 'N/A'}`,
+              font: fontStyle,
+              size: 22,
+              bold: true,
+              color: researchData.data_confidence === 'High' ? '2e7d32' : researchData.data_confidence === 'Medium' ? 'f57f17' : 'd32f2f'
+            })
+          ],
+          spacing: { after: 180 }
+        })
+      )
+    }
+
+    // 可比較交易案例
+    if (researchData.comparable_deals && researchData.comparable_deals.length > 0) {
+      children.push(
+        new Paragraph({
+          text: '可比較交易案例',
+          heading: HeadingLevel.HEADING_2,
+          spacing: { before: 180, after: 120 }
+        })
+      )
+
+      researchData.comparable_deals.forEach((deal, index) => {
+        children.push(
+          new Paragraph({
+            children: [
+              new TextRun({
+                text: `${index + 1}. `,
+                font: fontStyle,
+                size: 22,
+                bold: true
+              }),
+              new TextRun({
+                text: deal.description,
+                font: fontStyle,
+                size: 22,
+                bold: true
+              })
+            ],
+            spacing: { after: 60 }
+          })
+        )
+
+        if (deal.value) {
+          children.push(
+            new Paragraph({
+              children: [
+                new TextRun({
+                  text: `   交易價值: ${deal.value}`,
+                  font: fontStyle,
+                  size: 20,
+                  color: '2e7d32'
+                })
+              ],
+              spacing: { after: 60 }
+            })
+          )
+        }
+
+        if (deal.source) {
+          children.push(
+            new Paragraph({
+              children: [
+                new TextRun({
+                  text: `   資料來源: ${deal.source}`,
+                  font: fontStyle,
+                  size: 18,
+                  color: '666666'
+                })
+              ],
+              spacing: { after: 120 }
+            })
+          )
+        }
+      })
+    }
+
+    // 相關訴訟參考
+    if (researchData.litigation_references && researchData.litigation_references.length > 0) {
+      children.push(
+        new Paragraph({
+          text: '相關訴訟參考',
+          heading: HeadingLevel.HEADING_2,
+          spacing: { before: 180, after: 120 }
+        })
+      )
+
+      researchData.litigation_references.forEach((litigation, index) => {
+        children.push(
+          new Paragraph({
+            children: [
+              new TextRun({
+                text: `${index + 1}. `,
+                font: fontStyle,
+                size: 22,
+                bold: true
+              }),
+              new TextRun({
+                text: litigation.case,
+                font: fontStyle,
+                size: 22,
+                bold: true
+              })
+            ],
+            spacing: { after: 60 }
+          })
+        )
+
+        if (litigation.damages) {
+          children.push(
+            new Paragraph({
+              children: [
+                new TextRun({
+                  text: `   損害賠償: ${litigation.damages}`,
+                  font: fontStyle,
+                  size: 20,
+                  color: 'd32f2f'
+                })
+              ],
+              spacing: { after: 60 }
+            })
+          )
+        }
+
+        if (litigation.source) {
+          children.push(
+            new Paragraph({
+              children: [
+                new TextRun({
+                  text: `   資料來源: ${litigation.source}`,
+                  font: fontStyle,
+                  size: 18,
+                  color: '666666'
+                })
+              ],
+              spacing: { after: 120 }
+            })
+          )
+        }
+      })
+    }
+
+    // 參考資料來源
+    if (researchData.sources && researchData.sources.length > 0) {
+      children.push(
+        new Paragraph({
+          text: '參考資料來源',
+          heading: HeadingLevel.HEADING_2,
+          spacing: { before: 180, after: 120 }
+        })
+      )
+
+      researchData.sources.slice(0, 10).forEach((source, index) => {
+        children.push(
+          new Paragraph({
+            children: [
+              new TextRun({
+                text: `${index + 1}. ${source}`,
+                font: fontStyle,
+                size: 20,
+                color: '1976d2',
+                underline: {}
+              })
+            ],
+            spacing: { after: 120 }
+          })
+        )
+      })
+    }
+  }
+
   // ========== 總結 ==========
   children.push(
     new Paragraph({
